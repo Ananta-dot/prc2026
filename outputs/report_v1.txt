@@ -1,0 +1,10 @@
+v1: features 194, cap 3600.0, winsor False, lr 0.08, leaves 127 (10s)
+train rows 1737194, val rows 344419, rounds 1466
+  val RMSE on rows with truth <= 3000: 197.30
+  val RMSE on rows with truth <= 3600: 205.87
+  val RMSE on rows with truth <= 5400: 225.80
+  val RMSE on rows with truth <= 7200: 241.52
+  by airport (truth<=3600): EDDF 175, EDDM 163, EGLL 212, EHAM 164, LEBL 218, LEMD 172, LFPG 225, LIRF 301, LSZH 169, LTFM 227
+  by month (truth<=3600):   1 192, 7 217
+  top features: te_stand_rwy 0.195, q10_stand_rwy 0.178, xE 0.066, xmin_SELI 0.055, te_callsign 0.050, xA 0.042, c_rwy 0.029, xI 0.028, te_opr_rwy 0.028, c_opr 0.026, xA_min_floor 0.022, xmin_SELI_m_q10 0.015, xE_m_q10 0.011, q10_stand 0.011, te_flight 0.010, n_to_rwy_since_E 0.010, c_type 0.009, xA_m_q10 0.009, d_EA 0.008, c_apt 0.007, xL 0.006, xA_share_rwy 0.006, day_n_dep 0.006, xS_to_rwy_-600_600 0.006, std_ib_prev1 0.006 (589s)
+wrote out/courageous-onion_v1.parquet: 344841 rows, mean 1028.8, min 0.0, max 4038.3 (1282s)

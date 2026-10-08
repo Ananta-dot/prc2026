@@ -1,0 +1,20 @@
+# secrets: never commit
+credentials.json
+
+# challenge data and anything derived from it
+data/raw/*.parquet
+data/processed/*
+!data/processed/.gitkeep
+cache/
+
+# model artefacts and submissions
+outputs/*.parquet
+outputs/*.pkl
+outputs/*.npz
+outputs/model*.txt
+outputs/*.log
+
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
