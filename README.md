@@ -94,6 +94,10 @@ round counts found on the held-out months.
   prediction is the probability-weighted mean of "take-off minus schedule minus delay"
   and an ordinary regressor. Class shares from the training year replace the gate for
   the record types with too few cases to learn (the date-shifted ones, the UTC-day rule).
+- Long holds come in events (snow days), and a gate under-states an event it has not
+  seen. Out-of-fold gate predictions measure that per airport, and the gate is shifted
+  upwards by that amount (at most 0.7 logits). On six held-out Istanbul snow days this
+  lowers the RMSE from 276.7 to 271.2; on ordinary months it changes little.
 - A handful of records match nothing (for example two Paris departures in January 2025
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.

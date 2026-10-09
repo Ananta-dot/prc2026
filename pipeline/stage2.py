@@ -43,6 +43,7 @@ ap.add_argument("--drop", default="doy", help="comma-separated feature-name pref
 ap.add_argument("--stages", type=int, default=3, help="number of models in the chain (light passes = stages - 1)")
 ap.add_argument("--mm", default="", help="park the feature matrix in this .npy file while the light passes train (for machines short of memory)")
 ap.add_argument("--val-range", default="", help="hold out these UTC days instead of whole months: 'YYYY-MM-DD:YYYY-MM-DD[,...]', end exclusive")
+ap.add_argument("--cal-cap", type=float, default=0.7, help="largest per-airport upward correction of the gate, in logits (0 = off)")
 ap.add_argument("--gate-rounds", type=int, default=300)
 ap.add_argument("--dump-zone", default="", help="save the gate-zone rows of the matrix to this prefix and stop")
 ap.add_argument("--on-min", type=float, default=3600.0, help="near-schedule class needs a taxi time above this")
@@ -265,6 +266,26 @@ def run(fold, final, pred_rows, rounds=None, va=None):
         gate = lgb.train(GATE, dg, g_rounds)
         zone = np.nan_to_num(xs_p) > GATE_XS
         P[zone, 1] = gate.predict(Xp[zone], num_iteration=g_rounds)
+        if a.cal_cap > 0:
+            # Long holds come in events (snow days), and a gate that has not seen an event
+            # under-states it. Out-of-fold predictions on the training rows measure by how much
+            # at each airport; shift the gate by that many logits (shrunk, never downwards).
+            lg = lambda p: np.log(np.clip(p, 1e-4, 1 - 1e-4) / (1 - np.clip(p, 1e-4, 1 - 1e-4)))
+            oofp = np.full(len(y), np.nan); gl = (cls == 1).astype("float64"); gwa = (np.clip(np.nan_to_num(xS), GATE_XS, FAR_XS) / GATE_XS) ** 2
+            for f in sorted(set(fold[g_tr])):
+                kf, ko = g_tr & (fold != f), g_tr & (fold == f)
+                mg = lgb.train(GATE, lgb.Dataset(X[kf], label=gl[kf].astype("int32"), weight=gwa[kf], feature_name=names, categorical_feature=cats, params=GATE), g_rounds)
+                oofp[ko] = mg.predict(X[ko])
+            ap_p, shifts = apt[pred_rows], {}
+            for ap_ in np.unique(apt[g_tr]):
+                k = g_tr & (apt == ap_); npos = gl[k].sum(); b = 0.0
+                if npos >= 5:
+                    for _ in range(50):
+                        q = 1 / (1 + np.exp(-(lg(oofp[k]) + b))); b -= (gwa[k] * (q - gl[k])).sum() / ((gwa[k] * q * (1 - q)).sum() + 1e-9)
+                b = float(np.clip(b * npos / (npos + 100.0), 0.0, a.cal_cap)); shifts[M.APTS[ap_]] = round(b, 2)
+                kz = zone & (ap_p == ap_)
+                P[kz, 1] = 1 / (1 + np.exp(-(lg(P[kz, 1]) + b)))
+            print("  gate correction by airport (logits):", shifts, flush=True)
         # how long after schedule the push-back was, for flights in the "near schedule" class
         on_tr = g_tr & (cls == 1)
         dd = lgb.Dataset(X[on_tr], label=push_t[on_tr], feature_name=names, categorical_feature=cats, params=DELTA)
