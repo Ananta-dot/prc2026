@@ -118,9 +118,10 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v2 | two-stage, trained on rows <= 3600 s | 199.29 | about 563 | 534.77 |
 | v3 | `stage2.py --stages 3`: weather, gate for near-schedule off-block times, record-type rules | 206.69 | 304.31 | - |
 | v4 | mean of two `stage2.py --stages 3` runs (seed 7 / lr 0.08 and seed 11 / lr 0.05), refined rules for flights more than 8 h late | 203.0 | 299.8 | - |
+| v5 | mean of two `stage2.py --stages 3 --lr 0.05` runs (seed 7 with the per-airport gate correction, seed 11 without) | 203.4 | 297.9 | - |
 
 Two of the held-out rows (the Paris records above) account for 173 of the 304 in quadrature; without
-them the all-rows figure is 250.83 for v3 and 245.3 for v4. The first two versions were built on the wrong
+them the all-rows figure is 250.83 for v3, 245.3 for v4 and 243.0 for v5. The first two versions were built on the wrong
 assumption that extreme rows were not scored.
 
 v3 was written by the run reported in `outputs/report_v3.txt`; the rules for unmatched

@@ -1,0 +1,22 @@
+v5 = mean of two full runs of stage2.py --stages 3 --lr 0.05 (seed 7 with the per-airport gate correction, and seed 11 without it); rows predicted above 4 h taken from the seed-7 run.
+validation, Jan+Jul 2025, all rows: this blend 297.89 (243.02 without the 2 rows that match no record type); seed-7 run alone 299.19 (244.59); seed-11 run alone 299.09 (244.51)
+
+--- seed-7 run ---
+v5a: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
+features 317, val rows 344419, regressor rounds 2681, gate rounds 300, push-delay rounds 851
+  val RMSE, all rows: 299.19
+  val RMSE, all rows except the 2 above 14400s that match neither artefact: 244.59
+  regressor alone, all rows: 554.87
+    near-schedule push, taxi above 1 h: n=831, RMSE 2342.8, mean gate P(near-schedule) 0.471, P(shift) 0.001
+    day-shift rows: n=5, RMSE 11195.0, mean gate P(near-schedule) 0.306, P(shift) 0.658
+    other rows above 1 h: n=143, RMSE 2170.1, mean gate P(near-schedule) 0.080, P(shift) 0.000
+    rows up to 1 h: n=343438, RMSE 207.2, mean gate P(near-schedule) 0.001, P(shift) 0.000
+  val RMSE on rows with truth <= 3000: 200.99
+  val RMSE on rows with truth <= 3600: 207.19
+  val RMSE on rows with truth <= 5400: 217.01
+  val RMSE on rows with truth <= 7200: 223.21
+  by airport (truth<=3600): EDDF 166, EDDM 153, EGLL 210, EHAM 159, LEBL 209, LEMD 164, LFPG 219, LIRF 371, LSZH 161, LTFM 208
+  by month (truth<=3600):   1 187, 7 222
+  regressor top features: s2_yhat 0.461, te_stand_rwy 0.126, s2_exc 0.082, q10_stand_rwy 0.037, xE 0.025, s2_nto_rwy_during 0.022, te_opr_stand 0.015, c_opr 0.012, c_rwy 0.010, xmin_SELI 0.009, te_flight 0.008, c_type 0.007, te_opr_rwy 0.007, s2_exc_rwy_bef 0.006, xE_m_te 0.005, s2_exc_rwy_wide 0.005, te_rwy_type 0.005, xA_share_rwy 0.004, s2_prev1_exc 0.004, te_stand 0.003
+  gate top features: rB_opr_rwy 0.160, rB_opr 0.115, rB_callsign 0.094, rS_opr 0.075, s2_yhat 0.061, c_rwy 0.055, xI 0.044, d_SE 0.040, xL 0.038, s2_exc 0.029, rZ_zone 0.016, c_opr 0.011, rS_callsign 0.010, xS_m_te 0.008, xS 0.007, rS_flight 0.007, d_SA 0.007, xE_m_q10 0.007, xmin_SELI 0.006, xmax_SELI 0.005
+wrote out/courageous-onion_v50.parquet: 344841 rows, mean 1049.9, max 102211.1, rows predicted above 1 h: 1129, expected near-schedule-push rows 1139, day-shift 3.2
