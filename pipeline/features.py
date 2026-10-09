@@ -4,9 +4,13 @@
 Nothing here uses the target or any departure's off-block time, so every feature is
 available for the ranking rows exactly as it is for the training rows.
 
-  python features.py cache/compact.parquet cache/feat.parquet
+  python3 features.py compact.parquet feat.parquet [folder with metar_<ICAO>.csv files]
 """
+import gc
+import os
+import shutil
 import sys
+import tempfile
 import numpy as np
 import pandas as pd
 
@@ -91,7 +95,7 @@ ANCHORS = {"S": "t_SCHED_TIME_UTC_mvt", "E": "t_EOBT_1_flt", "L": "t_LOBT_flt",
            "I": "t_IOBT_flt", "A": "t_AOBT_3_flt"}
 
 
-def build(df):
+def build(df, metar_dir=None, spill=None):
     dep = df["is_dep"].to_numpy()
     T_all = df["t_MVT_TIME_UTC_mvt"].to_numpy()
     blk = df["t_BLOCK_TIME_UTC_mvt"].to_numpy()
@@ -104,14 +108,25 @@ def build(df):
     txi = df[TARGET].to_numpy()
     sched = df["t_SCHED_TIME_UTC_mvt"].to_numpy()
     arr = ~dep
+    k_opr = combo(df["APT"], df["AIRCRAFT_OPERATOR_flt"])
+    a_key = combo(df["APT"], df["STAND_mvt"], df["RUNWAY_mvt"])[arr]
+    arvt3_arr = df["t_ARVT_3_flt"].to_numpy()[arr]
 
     d = df[dep].reset_index(drop=True)
+    del df
+    gc.collect()
     T = d["t_MVT_TIME_UTC_mvt"].to_numpy()
     qa, qr, qs = k_apt[dep], k_rwy[dep], k_std[dep]
     apt = d["APT"].astype(str).to_numpy()
     class F32(dict):
+        """float32 columns; kept on disk (memory-mapped) when a spill folder is given."""
         def __setitem__(self, k, v):
-            super().__setitem__(k, np.asarray(v, dtype="float32"))
+            v = np.asarray(v, dtype="float32")
+            if spill:
+                path = os.path.join(spill, f"{len(self):04d}.npy")
+                np.save(path, v)
+                v = np.load(path, mmap_mode="r")
+            super().__setitem__(k, v)
     F = F32()
 
     # --- anchors: take-off time minus each reference off-block time -----------------------
@@ -183,9 +198,8 @@ def build(df):
     # --- the stand: who was on it before, who needed it next ---------------------------------
     # arrivals whose recorded in-block time is just the schedule / whose landing matches NM
     a_dflt = (np.abs(blk[arr] - sched[arr]) <= 7).astype("float64")
-    a_nm = (np.abs(T_all[arr] - df["t_ARVT_3_flt"].to_numpy()[arr]) <= 67).astype("float64")
+    a_nm = (np.abs(T_all[arr] - arvt3_arr) <= 67).astype("float64")
     a_late = np.clip(T_all[arr] - sched[arr], -3600, 10800)
-    k_opr = combo(df["APT"], df["AIRCRAFT_OPERATOR_flt"])
     qo = k_opr[dep]
     ao = Events(k_opr[arr], blk[arr], dflt=a_dflt, nm=a_nm)
     aa = Events(k_apt[arr], blk[arr], dflt=a_dflt, nm=a_nm)
@@ -224,7 +238,6 @@ def build(df):
     for k in (0, 300, 600, 900, 1200, 1800, 2700):
         F[f"n_arr_taxiing_{k}"] = (ev["ld_apt"].count(qa, T - k, -172800.0, 0.5)
                                    - ev["ib_apt"].count(qa, T - k, -172800.0, 0.5))
-    a_key = combo(df["APT"], df["STAND_mvt"], df["RUNWAY_mvt"])[arr]
     a_txi = pd.Series(np.clip(txi[arr], 0, 3600))
     exc = (a_txi - a_txi.groupby(a_key).transform("mean")).to_numpy()
     ax = Events(k_apt[arr], T_all[arr], exc=exc)
@@ -252,6 +265,12 @@ def build(df):
         run_f = np.minimum.accumulate(np.where(brk2, ii, len(kk))[::-1])[::-1] - ii
         F[f"run_back_{thr}"] = run_b[pos]
         F[f"run_fwd_{thr}"] = run_f[pos]
+
+    # --- weather at the airport (optional: needs the METAR files from get_weather.py) ---------
+    if metar_dir:
+        import weather
+        for k, v in weather.features(metar_dir, apt, T, d["RUNWAY_mvt"].astype(str).to_numpy()).items():
+            F[k] = v
 
     # --- calendar / categoricals ------------------------------------------------------------
     loc = T + off
@@ -293,6 +312,17 @@ if __name__ == "__main__":
     import pyarrow as pa
     import pyarrow.parquet as pq
     src, out = sys.argv[1], sys.argv[2]
-    cols, apts = build(pd.read_parquet(src))
-    pq.write_table(pa.table(cols), out)
-    print(len(next(iter(cols.values()))), "rows,", len(cols), "columns; airports:", apts)
+    metar_dir = sys.argv[3] if len(sys.argv) > 3 else None
+    spill = tempfile.mkdtemp(prefix="feat_", dir=os.path.dirname(os.path.abspath(out)))
+    try:
+        cols, apts = build(pd.read_parquet(src), metar_dir, spill)
+        n = len(next(iter(cols.values())))
+        writer = None
+        for i in range(0, n, 200_000):          # row chunks keep the peak memory small
+            t = pa.table({k: np.asarray(v[i:i + 200_000]) for k, v in cols.items()})
+            writer = writer or pq.ParquetWriter(out, t.schema)
+            writer.write_table(t)
+        writer.close()
+    finally:
+        shutil.rmtree(spill, ignore_errors=True)
+    print(n, "rows,", len(cols), "columns; airports:", apts)

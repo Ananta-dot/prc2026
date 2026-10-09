@@ -34,11 +34,8 @@ drop = tuple(x for x in a.drop.split(",") if x)
 
 def prepare(fold, final, pred_rows):
     """Matrix -> encodings -> binned dataset; keeps raw rows only where predictions are needed."""
-    X, names = M.matrix(a.feat, feats, meta)
+    X, names = M.matrix(a.feat, [f for f in feats if not (drop and f.startswith(drop))], meta)
     M.fill_encodings(X, names, meta, y, lab, fold, final=final)
-    use = [j for j, n in enumerate(names) if not n.startswith(drop)] if drop else None
-    if use is not None:
-        X, names = np.ascontiguousarray(X[:, use]), [names[j] for j in use]
     ds = M.dataset(X, names, yt, free=True).construct()
     Xp = X[pred_rows].copy()
     del X; gc.collect()

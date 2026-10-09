@@ -24,10 +24,13 @@ ap.add_argument("--lr", type=float, default=0.08); ap.add_argument("--leaves", t
 ap.add_argument("--s1-rounds", type=int, default=300); ap.add_argument("--s1-lr", type=float, default=0.15)
 ap.add_argument("--skip-final", action="store_true"); ap.add_argument("--rounds", type=int, default=0)
 ap.add_argument("--seed", type=int, default=7)
+ap.add_argument("--drop", default="doy", help="comma-separated feature-name prefixes to leave out")
+ap.add_argument("--init", action="store_true", help="final model learns the correction to the last light pass")
 ap.add_argument("--stages", type=int, default=2, help="2 = one out-of-fold pass before the final model, 3 = two passes")
 a = ap.parse_args()
 t0 = time.time(); os.makedirs(a.out, exist_ok=True); tag = a.tag or f"v{a.version}"
 M.BASE.update(num_threads=a.threads, learning_rate=a.lr, num_leaves=a.leaves, seed=a.seed)
+DROP = tuple(x for x in a.drop.split(",") if x)
 LIGHT = dict(learning_rate=a.s1_lr, num_leaves=63, bagging_fraction=0.5)
 S2 = ["s2_yhat", "s2_exc", "s2_ntaxi_apt", "s2_ntaxi_rwy", "s2_ntaxi_apt_T", "s2_ntaxi_rwy_T",
       "s2_npush_m300", "s2_npush_p300", "s2_npush_rwy_m600", "s2_npush_rwy_p600", "s2_narr_taxi_b",
@@ -96,19 +99,20 @@ def surface_features(pred, rwy, usual):
 
 
 def oof(ds, X, fit_rows, universe, fold, **params):
-    """Out-of-fold predictions for `universe` rows; every other row from a model on all fit rows."""
+    """Out-of-fold predictions for `universe` rows. Every other row (validation or ranking) gets
+    the average of the fold models, so its estimate comes from models of the same strength."""
     pred = np.zeros(len(y))
-    for f in sorted(set(fold[universe])):
+    folds = sorted(set(fold[universe]))
+    for f in folds:
         m = M.fit(ds, fit_rows & (fold != f), rounds=a.s1_rounds, **params)
         rows = universe & (fold == f)
         pred[rows] = M.predict(m, X, rows)
-    m = M.fit(ds, fit_rows, rounds=a.s1_rounds, **params)
-    pred[~universe] = M.predict(m, X, ~universe)
+        pred[~universe] += M.predict(m, X, ~universe) / len(folds)
     return np.clip(pred, 0, None)
 
 
 def run(fold, final, pred_rows, rounds=None, va=None):
-    X, names = M.matrix(a.feat, feats, meta, extra=S2)
+    X, names = M.matrix(a.feat, [f for f in feats if not (DROP and f.startswith(DROP))], meta, extra=S2)
     M.fill_encodings(X, names, meta, y, lab, fold, final=final)
     col = {n: j for j, n in enumerate(names)}
     universe = lab & ((fold > 0) | final)          # rows that get an out-of-fold prediction
@@ -122,13 +126,16 @@ def run(fold, final, pred_rows, rounds=None, va=None):
             X[:, col[n]] = v
         print(f"  pass {stage} done ({time.time()-t0:.0f}s)", flush=True)
     Xp = X[pred_rows].copy()
-    ds = M.dataset(X, names, yt, free=True).construct()
+    ds = M.dataset(X, names, yt, free=True)
+    if a.init:
+        ds.set_init_score(pred)
+    ds.construct()
     del X; gc.collect()
     m = M.fit(ds, fit_rows, va, rounds=rounds or 5000)
     return m, Xp, names, pred
 
 
-log = [f"{tag}: {a.stages}-stage, cap {a.cap}, lr {a.lr}, leaves {a.leaves}, light rounds {a.s1_rounds}"]
+log = [f"{tag}: {a.stages}-stage, init {a.init}, cap {a.cap}, lr {a.lr}, leaves {a.leaves}, light rounds {a.s1_rounds}"]
 print(log[0], flush=True)
 best = a.rounds
 if not a.rounds:
@@ -136,7 +143,7 @@ if not a.rounds:
     va = lab & (fold == 0) & np.isfinite(y)
     m, Xv, names, pred1 = run(fold, False, va, va=va)
     best = m.best_iteration
-    p = np.clip(m.predict(Xv, num_iteration=best), 0, None)
+    p = np.clip(m.predict(Xv, num_iteration=best) + (pred1[va] if a.init else 0), 0, None)
     k = y[va] <= 3600
     log.append(f"features {len(names)}, val rows {int(va.sum())}, rounds {best}; last light pass alone on truth<=3600: {M.rmse(y[va][k], pred1[va][k]):.2f}")
     log += M.val_lines(y[va], p, apt[va], month[va])
@@ -148,8 +155,8 @@ if not a.rounds:
     del m, Xv; gc.collect()
 
 if not a.skip_final:
-    m, Xr, names, _ = run(M.month_folds(month, []), True, rank, rounds=int(best * 1.15))
-    pr = np.clip(m.predict(Xr), 0, None)
+    m, Xr, names, predf = run(M.month_folds(month, []), True, rank, rounds=int(best * 1.15))
+    pr = np.clip(m.predict(Xr) + (predf[rank] if a.init else 0), 0, None)
     tpl = pd.read_parquet(a.template)
     res = tpl[["MVT_ID_mvt"]].merge(pd.DataFrame({"MVT_ID_mvt": ids[rank], "p": pr}), on="MVT_ID_mvt", how="left", validate="one_to_one")
     assert len(res) == len(tpl) and res.p.notna().all() and (res.MVT_ID_mvt.to_numpy() == tpl.MVT_ID_mvt.to_numpy()).all()
