@@ -23,7 +23,9 @@ def load(path):
     return feats, meta
 
 
-CLS_KEYS = ("opr", "opr_rwy", "opr_stand", "stand", "callsign", "flight")
+CLS_KEYS = ("opr", "opr_rwy", "opr_stand", "stand", "callsign", "flight", "fpre")
+ZONE_EDGES = np.array([3600.0, 5400.0, 7200.0, 10800.0, 14400.0, 28800.0, 43200.0])
+UNM_KEYS = ("fpre", "stand", "flight", "ades")
 EXTRA = ("S_exp_opr", "S_exp_opr_stand", "S_exp_flight", "A_exp_opr_rwy", "A_exp_opr_stand")
 
 
@@ -32,14 +34,21 @@ def te_names(meta):
     for kc in [c for c in meta.columns if c.startswith("k_")]:
         n = kc[2:]
         names += ["te_" + n, "cnt_" + n] + (["q10_" + n] if n in TE_QUANT else [])
-        names += (["rS_" + n, "rA_" + n] if n in CLS_KEYS else [])
-    return names + [f"{a}_m_{b}" for a in INTER for b in ("te", "q10")] + list(EXTRA)
+        names += (["rS_" + n, "rA_" + n, "rB_" + n] if n in CLS_KEYS else [])
+        names += (["rU_" + n, "cntU_" + n] if n in UNM_KEYS else [])
+    return names + [f"{a}_m_{b}" for a in INTER for b in ("te", "q10")] + list(EXTRA) + ["rZ_zone", "cntZ_zone"]
 
 
-def matrix(path, feats, meta, extra=()):
-    """One float32 matrix: stored features, then room for the encodings (and `extra` columns)."""
+def matrix(path, feats, meta, extra=(), mm=None):
+    """One float32 matrix: stored features, then room for the encodings (and `extra` columns).
+    With `mm` (a file path) the matrix lives in a memory-mapped file, so a machine short of
+    memory can page it out instead of failing."""
     names = feats + te_names(meta) + list(extra)
-    X = np.full((len(meta), len(names)), np.nan, dtype=np.float32)
+    if mm:
+        X = np.lib.format.open_memmap(mm, mode="w+", dtype=np.float32, shape=(len(meta), len(names)))
+        X[:] = np.nan
+    else:
+        X = np.full((len(meta), len(names)), np.nan, dtype=np.float32)
     for j, c in enumerate(feats):
         X[:, j] = pq.read_table(path, columns=[c]).column(0).to_numpy()
     return X, names
@@ -70,7 +79,8 @@ def fill_encodings(X, names, meta, y, labelled, fold, final=False, smooth=20.0, 
     """Out-of-fold encodings per key, written into X.
 
     Per key: mean / 10th percentile / count of the (capped) taxi time, and for some keys the
-    rate at which the off-block time equals the schedule (rS) or the NM off-block time (rA).
+    rate at which the off-block time equals the schedule (rS) or the NM off-block time (rA), and
+    the same schedule rate among flights that took off more than an hour after schedule (rB).
 
     Validation mode: fold-0 rows are encoded from folds 1..4 and contribute to nobody.
     Final mode: every labelled row contributes; labelled rows are encoded out of their own
@@ -83,6 +93,9 @@ def fill_encodings(X, names, meta, y, labelled, fold, final=False, smooth=20.0, 
     with np.errstate(invalid="ignore"):
         isS = np.nan_to_num(np.abs(y - xS) <= 7).astype("float64")
         isA = np.nan_to_num(np.abs(y - xA) <= 67).astype("float64")
+    isB = isS * (np.nan_to_num(y) > 3600)             # off-block == schedule AND more than an hour
+    src_big = src & (np.nan_to_num(xS) > 3600)
+    src_unm = src_big & (X[:, col["flt_missing"]] > 0)
     folds = sorted(set(fold[src]))
     for kc in [c for c in meta.columns if c.startswith("k_")]:
         name, key = kc[2:], meta[kc].to_numpy()
@@ -92,6 +105,11 @@ def fill_encodings(X, names, meta, y, labelled, fold, final=False, smooth=20.0, 
         if name in CLS_KEYS:
             X[:, col["rS_" + name]] = _oof(key, isS, src, fold, smooth)[0]
             X[:, col["rA_" + name]] = _oof(key, isA, src, fold, smooth)[0]
+            X[:, col["rB_" + name]] = _oof(key, isB, src_big, fold, 5.0)[0]
+        if name in UNM_KEYS:      # same rate among late flights with no matched NM flight
+            ru, cu, _ = _oof(key, isB, src_unm, fold, 2.0)
+            X[:, col["rU_" + name]] = ru
+            X[:, col["cntU_" + name]] = cu
         if name in TE_QUANT:
             q = np.full(len(key), np.nan, dtype="float32")
             for f in folds + [-1]:
@@ -99,6 +117,14 @@ def fill_encodings(X, names, meta, y, labelled, fold, final=False, smooth=20.0, 
                 q10 = (t[t.f != f] if f >= 0 else t).groupby("k")["v"].quantile(0.1)
                 q[rows] = pd.Series(key[rows]).map(q10).to_numpy(dtype="float32")
             X[:, col["q10_" + name]] = q
+    # schedule-artefact rate by airport x matched/unmatched x how late the take-off was
+    band = np.searchsorted(ZONE_EDGES, np.nan_to_num(xS), side="right")
+    zkey = (meta["m_apt"].to_numpy().astype("int64") * 2 + (X[:, col["flt_missing"]] > 0)) * 16 + band
+    if "mid_utc" in col:      # ... x whether the take-off was on a later UTC day than the schedule
+        zkey = zkey * 2 + (np.nan_to_num(X[:, col["mid_utc"]]) > 600)
+    rz, cz, _ = _oof(zkey, isB, src_big, fold, 2.0)
+    X[:, col["rZ_zone"]] = np.where(band > 0, rz, 0.0)
+    X[:, col["cntZ_zone"]] = np.where(band > 0, cz, 0.0)
     base = X[:, col["te_stand_rwy"]]
     for a in INTER:
         X[:, col[a + "_m_te"]] = X[:, col[a]] - base

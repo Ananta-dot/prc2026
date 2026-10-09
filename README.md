@@ -27,15 +27,16 @@ python3 prep.py ../data/raw ../data/processed/compact.parquet
 python3 features.py ../data/processed/compact.parquet ../data/processed/feat.parquet ../data/external
 python3 stage2.py --feat ../data/processed/feat.parquet --compact ../data/processed/compact.parquet \
     --template ../data/raw/submitting.parquet --out ../outputs \
-    --team courageous-onion --version 3 --stages 3 --cap 5400
+    --team courageous-onion --version 3 --stages 3
 python3 upload.py put ../outputs/courageous-onion_v3.parquet
+python3 leaderboard.py           # the team's scores from the official leaderboard API
 ```
 
-Both `train.py` (single model) and `stage2.py` (two-stage model) hold out January and
-July 2025, print the validation RMSE, then refit on all of 2025 and write
-`<team>_v<version>.parquet` in the template's row order.
-`--cap` keeps training rows whose taxi time is at most that many seconds; `--winsor`
-clips instead of dropping; `--threads 0` (default) uses every core.
+`stage2.py` holds out January and July 2025, prints the validation RMSE over every held-out
+row, then refits on all of 2025 and writes `<team>_v<version>.parquet` in the template's
+row order. `--threads 0` (default) uses every core. On a machine with less than about 8 GB
+free, add `--mm ../data/processed/park.npy`: the feature matrix is parked in that file while
+models train. `train.py` is the earlier single model (version 1).
 
 ## Layout
 
@@ -46,8 +47,9 @@ clips instead of dropping; `--threads 0` (default) uses every core.
 | `pipeline/get_weather.py`, `pipeline/weather.py` | download METAR observations; turn them into snow, frost, thunderstorm, visibility and wind features |
 | `pipeline/model.py` | out-of-fold target encodings, LightGBM helpers, validation report |
 | `pipeline/train.py` | single model: validation, final fit, submission file |
-| `pipeline/stage2.py` | two-stage model: out-of-fold first pass, surface-state features from the estimated off-block times, final model |
+| `pipeline/stage2.py` | the model: out-of-fold light passes, surface-state features from the estimated off-block times, a gate for late flights whose off-block time is near the schedule, rules for the rarest record types, final regressor |
 | `pipeline/upload.py` | list / download / upload against the OpenSky object store |
+| `pipeline/leaderboard.py` | read the team's scores from the official leaderboard API |
 | `outputs/report_v*.txt` | validation report for each submitted version |
 | `src/` | the earlier starter pipeline, kept for reference; not used by `pipeline/` |
 
@@ -56,10 +58,27 @@ clips instead of dropping; `--threads 0` (default) uses every core.
 - Timestamps carry about ±6 s of added noise.
 - For roughly a fifth of departures the recorded off-block time equals the Network
   Manager's `AOBT_3_flt` to the minute, so the taxi time is take-off minus that value.
-- At Rome (LIRF) about 17% of off-block times equal the scheduled time, including most
-  of the hours-long "taxi times".
-- Rows above one hour are 0.2% of departures but more than half of the squared error
-  against an airport-mean baseline, so which rows are scored matters a great deal.
+- Every row is scored, and the score is dominated by a few hundred records. Taxi times
+  above one hour are 0.2% of departures; in the held-out months about 1,000 such rows
+  carry almost 90% of the squared error of a model that ignores them.
+- Most of those are not taxi times but records of a known form:
+  - **Off-block time equal to the schedule** (18% of Rome departures; elsewhere rare).
+    For a flight that took off hours late the "taxi time" is then take-off minus schedule.
+    Among Rome flights with no matched Network Manager record that took off on a later
+    UTC day than scheduled, 44 of 46 are of this kind.
+  - **Off-block time with the schedule's date** for flights delayed past about 13.5 h:
+    the taxi time is 24 h plus a normal taxi time (13 records in 2025, 12 at Rome).
+  - **Real long holds** after an on-time push-back (Heathrow, Paris CDG, Istanbul in
+    snow): taxi time is take-off minus schedule minus a short push delay.
+- How `stage2.py` uses this: for flights that took off more than an hour after schedule,
+  a classifier (the gate) estimates the probability that the off-block time is within
+  45 minutes of the schedule, a small regressor estimates that push delay, and the
+  prediction is the probability-weighted mean of "take-off minus schedule minus delay"
+  and an ordinary regressor. Class shares from the training year replace the gate for
+  the record types with too few cases to learn (the date-shifted ones, the UTC-day rule).
+- A handful of records match nothing (for example two Paris departures in January 2025
+  with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
+  not predicted.
 
 ## External data
 
@@ -69,10 +88,20 @@ No other external data is used.
 
 ## Results
 
-| Version | Trained on | Validation RMSE, Jan+Jul 2025, rows with true taxi time <= 1 h |
-|---|---|---|
-| v1 | `train.py`, rows <= 3600 s, 194 features, LightGBM | 205.87 |
-| v2 | `stage2.py` (two-stage, before the extra push-back-order features were added), rows <= 3600 s | 199.29 |
-| - | `stage2.py --stages 3` with weather, rows <= 3600 s (not submitted) | 195.85 |
+Validation: January and July 2025 held out (344,419 departures), the rest of 2025 for training.
 
-Validation for other cut-offs is in `outputs/report_v*.txt`.
+| Version | Model | Validation RMSE, rows with taxi time <= 1 h | Validation RMSE, all rows | Leaderboard |
+|---|---|---|---|---|
+| v1 | `train.py`, trained on rows <= 3600 s | 205.87 | about 565 | 538.92 |
+| v2 | two-stage, trained on rows <= 3600 s | 199.29 | about 563 | 534.77 |
+| v3 | `stage2.py --stages 3`: weather, gate for near-schedule off-block times, record-type rules | 206.69 | 304.31 | - |
+
+Two of the held-out rows (the Paris records above) account for 173 of the 304; without
+them the all-rows figure for v3 is 250.83. The first two versions were built on the wrong
+assumption that extreme rows were not scored.
+
+v3 was written by the run reported in `outputs/report_v3.txt`; the rules for unmatched
+flights more than 8 h late were refined afterwards and applied to 22 rows of that file.
+Those rules are now part of `stage2.py`, so a fresh run includes them.
+
+Reports for each version are in `outputs/report_v*.txt`.

@@ -1,0 +1,19 @@
+v3t: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.08, leaves 127
+features 317, val rows 344419, regressor rounds 1489, gate rounds 300, push-delay rounds 851
+  val RMSE, all rows: 304.31
+  val RMSE, all rows except the 2 above 14400s that match neither artefact: 250.83
+  regressor alone, all rows: 554.84
+    near-schedule push, taxi above 1 h: n=831, RMSE 2420.7, mean gate P(near-schedule) 0.444, P(shift) 0.001
+    day-shift rows: n=5, RMSE 16957.5, mean gate P(near-schedule) 0.201, P(shift) 0.660
+    other rows above 1 h: n=143, RMSE 2195.0, mean gate P(near-schedule) 0.071, P(shift) 0.000
+    rows up to 1 h: n=343438, RMSE 206.7, mean gate P(near-schedule) 0.001, P(shift) 0.000
+  val RMSE on rows with truth <= 3000: 200.38
+  val RMSE on rows with truth <= 3600: 206.69
+  val RMSE on rows with truth <= 5400: 217.02
+  val RMSE on rows with truth <= 7200: 223.47
+  by airport (truth<=3600): EDDF 166, EDDM 155, EGLL 211, EHAM 160, LEBL 210, LEMD 165, LFPG 219, LIRF 364, LSZH 162, LTFM 208
+  by month (truth<=3600):   1 187, 7 221
+  regressor top features: s2_yhat 0.473, te_stand_rwy 0.133, s2_exc 0.075, q10_stand_rwy 0.039, xE 0.029, s2_nto_rwy_during 0.020, te_opr_stand 0.015, c_opr 0.012, c_rwy 0.009, s2_exc_rwy_bef 0.008, c_type 0.007, xE_m_te 0.007, te_flight 0.007, xmin_SELI 0.006, s2_exc_rwy_wide 0.005, xA_share_rwy 0.005, s2_prev1_exc 0.004, s2_exc_push_rwy_aft 0.004, te_rwy_type 0.004, xA_min_floor 0.004
+  gate top features: rB_opr_rwy 0.160, rB_opr 0.115, rB_callsign 0.094, rS_opr 0.075, s2_yhat 0.061, c_rwy 0.055, xI 0.044, d_SE 0.040, xL 0.038, s2_exc 0.029, rZ_zone 0.016, c_opr 0.011, rS_callsign 0.010, xS_m_te 0.008, xS 0.007, rS_flight 0.007, d_SA 0.007, xE_m_q10 0.007, xmin_SELI 0.006, xmax_SELI 0.005
+wrote out/courageous-onion_v3.parquet: 344841 rows, mean 1048.6, max 80412.9, rows predicted above 1 h: 1072, expected near-schedule-push rows 995, day-shift 2.8
+after the run: refined rule for unmatched flights more than 8 h late applied to 22 rows (fix_far.py); the rule is now part of stage2.py

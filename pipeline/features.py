@@ -111,6 +111,8 @@ def build(df, metar_dir=None, spill=None):
     k_opr = combo(df["APT"], df["AIRCRAFT_OPERATOR_flt"])
     a_key = combo(df["APT"], df["STAND_mvt"], df["RUNWAY_mvt"])[arr]
     arvt3_arr = df["t_ARVT_3_flt"].to_numpy()[arr]
+    arvt3_missing = df["t_EOBT_1_flt"].isna().to_numpy()[arr]
+    k_pre = combo(df["APT"], pd.Series(df["FLIGHT_mvt"].astype(str).str[:3].to_numpy(), dtype="category"))
 
     d = df[dep].reset_index(drop=True)
     del df
@@ -158,6 +160,24 @@ def build(df, metar_dir=None, spill=None):
     F["xA_mode_rwy_day"] = g.groupby(["r", "day"])["m"].transform(lambda s: s.mode().iloc[0] if s.notna().any() else np.nan).to_numpy()
     F["xA_minus_mode"] = xa_min - F["xA_mode_rwy_day"]
 
+    # --- what kind of record this is ----------------------------------------------------------
+    # Movements with no matched NM flight, or whose flight number was rebuilt from the callsign,
+    # come from a different recording path: their off-block time is often just the schedule.
+    fl = d["FLIGHT_mvt"].astype(str)
+    F["f_len"] = fl.str.len().to_numpy()
+    F["f_rep2"] = ((fl.str[3:5] == fl.str[1:3]) & (fl.str.len() >= 6)).to_numpy()
+    F["f_rep1"] = ((fl.str[3] == fl.str[2]) & (fl.str.len() >= 5)).to_numpy() & ~(np.asarray(F["f_rep2"]) > 0)
+    F["f_rep3"] = ((fl.str[3:6] == fl.str[0:3]) & (fl.str.len() >= 6)).to_numpy()
+    F["f_iata"] = fl.str.match(r"^[A-Z0-9]{2}\d{1,4}[A-Z]?$").to_numpy()
+    F["f_eq_cs"] = (fl == d["CALLSIGN_flt"].astype(str)).to_numpy()
+    F["f_missing"] = d["FLIGHT_mvt"].isna().to_numpy()
+    F["type_missing"] = d["AIRCRAFT_TYPE_mvt"].isna().to_numpy()
+    off0 = utc_offset(apt, T)
+    sched_d = d["t_SCHED_TIME_UTC_mvt"].to_numpy()
+    F["dd_loc"] = np.floor((T + off0) / 86400) - np.floor((sched_d + off0) / 86400)
+    F["sched_loc_minute"] = ((sched_d + off0) % 86400) / 60
+    F["xS_log"] = np.log1p(np.clip(X["S"], 0, None))
+
     # --- traffic around the take-off -------------------------------------------------------
     xa_c = np.clip(X["A"], -600, 5400)
     xs_c = np.clip(X["S"], -1800, 10800)
@@ -201,6 +221,15 @@ def build(df, metar_dir=None, spill=None):
     a_nm = (np.abs(T_all[arr] - arvt3_arr) <= 67).astype("float64")
     a_late = np.clip(T_all[arr] - sched[arr], -3600, 10800)
     qo = k_opr[dep]
+    ap_ = Events(k_pre[arr], blk[arr], dflt=a_dflt)                  # arrivals of the same airline prefix
+    for lo, hi in [(-86400, 86400), (-259200, 259200)]:
+        tag = f"{int(hi / 3600)}h"
+        F["arr_dflt_fpre_" + tag] = ap_.mean("dflt", k_pre[dep], T, lo, hi)
+        F["arr_n_fpre_" + tag] = ap_.count(k_pre[dep], T, lo, hi)
+    a_fm = arvt3_missing
+    au = Events(k_apt[arr][a_fm], blk[arr][a_fm], dflt=a_dflt[a_fm])      # unmatched arrivals at the airport
+    F["arr_dflt_unmatched_72h"] = au.mean("dflt", qa, T, -259200, 259200)
+    del ap_, au
     ao = Events(k_opr[arr], blk[arr], dflt=a_dflt, nm=a_nm)
     aa = Events(k_apt[arr], blk[arr], dflt=a_dflt, nm=a_nm)
     for lo, hi in [(-10800, 10800), (-43200, 43200)]:
@@ -292,6 +321,7 @@ def build(df, metar_dir=None, spill=None):
           "opr_rwy": combo(d["APT"], d["AIRCRAFT_OPERATOR_flt"], d["RUNWAY_mvt"]),
           "opr_stand": combo(d["APT"], d["AIRCRAFT_OPERATOR_flt"], d["STAND_mvt"]),
           "opr": qo, "ades": combo(d["APT"], d["ADES_mvt"]), "flight": combo(d["APT"], d["FLIGHT_mvt"]),
+          "fpre": combo(d["APT"], pd.Series(fl.str[:3].to_numpy(), dtype="category")),
           "callsign": combo(d["APT"], d["CALLSIGN_flt"])}
     for k, v in te.items():
         extra["k_" + k] = v.astype("int32")
