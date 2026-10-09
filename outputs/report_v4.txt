@@ -1,0 +1,22 @@
+v4 = mean of two full runs of stage2.py --stages 3 (seed 7 lr 0.08, and seed 11 lr 0.05); rows predicted above 4 h taken from the second run (refined rules).
+validation, Jan+Jul 2025, all rows: mean of the two runs 299.8 (245.3 without the 2 rows that match no record type); second run alone 299.09 (244.51); first run 304.31 (250.83)
+
+--- second run ---
+v4s: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
+features 317, val rows 344419, regressor rounds 2420, gate rounds 300, push-delay rounds 300
+  val RMSE, all rows: 299.09
+  val RMSE, all rows except the 2 above 14400s that match neither artefact: 244.51
+  regressor alone, all rows: 554.64
+    near-schedule push, taxi above 1 h: n=831, RMSE 2505.6, mean gate P(near-schedule) 0.439, P(shift) 0.001
+    day-shift rows: n=5, RMSE 11176.2, mean gate P(near-schedule) 0.306, P(shift) 0.658
+    other rows above 1 h: n=143, RMSE 2172.5, mean gate P(near-schedule) 0.069, P(shift) 0.000
+    rows up to 1 h: n=343438, RMSE 202.4, mean gate P(near-schedule) 0.001, P(shift) 0.000
+  val RMSE on rows with truth <= 3000: 195.98
+  val RMSE on rows with truth <= 3600: 202.44
+  val RMSE on rows with truth <= 5400: 213.01
+  val RMSE on rows with truth <= 7200: 219.78
+  by airport (truth<=3600): EDDF 166, EDDM 154, EGLL 211, EHAM 159, LEBL 209, LEMD 164, LFPG 219, LIRF 336, LSZH 161, LTFM 207
+  by month (truth<=3600):   1 186, 7 215
+  regressor top features: s2_yhat 0.461, te_stand_rwy 0.066, s2_exc 0.064, q10_stand_rwy 0.047, te_opr_rwy 0.033, xmin_SELI 0.031, xE 0.026, te_callsign 0.018, te_opr_stand 0.015, c_opr 0.012, s2_exc_rel 0.011, s2_nto_rwy_during 0.009, s2_exc_rwy_wide 0.009, xA 0.009, c_rwy 0.009, s2_exc_rwy_bef 0.008, c_type 0.007, te_stand 0.005, q10_stand 0.005, s2_nld_apt_during 0.005
+  gate top features: rB_callsign 0.194, rB_opr_rwy 0.180, rB_opr 0.068, s2_yhat 0.056, c_rwy 0.048, xI 0.040, d_SE 0.036, rS_opr 0.031, xL 0.024, s2_exc 0.020, xE 0.017, rZ_zone 0.014, c_opr 0.011, d_SA 0.011, xS_m_q10 0.009, rS_callsign 0.008, s2_exc_rwy_wide 0.008, xmin_SELI 0.008, xS_m_te 0.007, s2_exc_rel 0.005
+wrote out/courageous-onion_v40.parquet: 344841 rows, mean 1047.6, max 102204.6, rows predicted above 1 h: 1037, expected near-schedule-push rows 973, day-shift 3.2

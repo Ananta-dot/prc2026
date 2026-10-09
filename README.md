@@ -38,6 +38,24 @@ row order. `--threads 0` (default) uses every core. On a machine with less than 
 free, add `--mm ../data/processed/park.npy`: the feature matrix is parked in that file while
 models train. `train.py` is the earlier single model (version 1).
 
+## Final phase
+
+The final ranking uses `final_ranking.parquet` (January, February, June and July 2026)
+and one file named `<team>_final.parquet`:
+
+```
+python3 upload.py pull
+python3 prep.py ../data/raw ../data/processed/compact_final.parquet final_ranking.parquet
+python3 features.py ../data/processed/compact_final.parquet ../data/processed/feat_final.parquet ../data/external
+python3 stage2.py --feat ../data/processed/feat_final.parquet --compact ../data/processed/compact_final.parquet \
+    --template ../data/raw/final_submitting.parquet --out ../outputs --name courageous-onion_final \
+    --stages 3 --seed 11 --lr 0.05 --rounds 2420,300,300
+python3 upload.py put ../outputs/courageous-onion_final.parquet
+```
+
+`--rounds` (regressor, gate, push-delay model) skips the validation pass and uses the
+round counts found on the held-out months.
+
 ## Layout
 
 | Path | What it is |
@@ -95,9 +113,10 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v1 | `train.py`, trained on rows <= 3600 s | 205.87 | about 565 | 538.92 |
 | v2 | two-stage, trained on rows <= 3600 s | 199.29 | about 563 | 534.77 |
 | v3 | `stage2.py --stages 3`: weather, gate for near-schedule off-block times, record-type rules | 206.69 | 304.31 | - |
+| v4 | mean of two `stage2.py --stages 3` runs (seed 7 / lr 0.08 and seed 11 / lr 0.05), refined rules for flights more than 8 h late | 203.0 | 299.8 | - |
 
-Two of the held-out rows (the Paris records above) account for 173 of the 304; without
-them the all-rows figure for v3 is 250.83. The first two versions were built on the wrong
+Two of the held-out rows (the Paris records above) account for 173 of the 304 in quadrature; without
+them the all-rows figure is 250.83 for v3 and 245.3 for v4. The first two versions were built on the wrong
 assumption that extreme rows were not scored.
 
 v3 was written by the run reported in `outputs/report_v3.txt`; the rules for unmatched

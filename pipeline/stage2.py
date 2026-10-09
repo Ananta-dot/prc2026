@@ -29,6 +29,7 @@ ap.add_argument("--feat", default="cache/feat.parquet"); ap.add_argument("--comp
 ap.add_argument("--template", required=True); ap.add_argument("--out", default="out")
 ap.add_argument("--team", default="courageous-onion"); ap.add_argument("--version", type=int, default=2)
 ap.add_argument("--tag", default="")
+ap.add_argument("--name", default="", help="output file name without .parquet (default <team>_v<version>)")
 ap.add_argument("--cap", type=float, default=3600.0, help="light passes train on rows with taxi time <= cap")
 ap.add_argument("--tail-cap", type=float, default=14400.0, help="final regressor trains on rows with taxi time <= this")
 ap.add_argument("--no-tail", action="store_true", help="single regressor, no gate (the earlier behaviour)")
@@ -41,6 +42,7 @@ ap.add_argument("--seed", type=int, default=7)
 ap.add_argument("--drop", default="doy", help="comma-separated feature-name prefixes to leave out")
 ap.add_argument("--stages", type=int, default=3, help="number of models in the chain (light passes = stages - 1)")
 ap.add_argument("--mm", default="", help="park the feature matrix in this .npy file while the light passes train (for machines short of memory)")
+ap.add_argument("--val-range", default="", help="hold out these UTC days instead of whole months: 'YYYY-MM-DD:YYYY-MM-DD[,...]', end exclusive")
 ap.add_argument("--gate-rounds", type=int, default=300)
 ap.add_argument("--dump-zone", default="", help="save the gate-zone rows of the matrix to this prefix and stop")
 ap.add_argument("--on-min", type=float, default=3600.0, help="near-schedule class needs a taxi time above this")
@@ -299,7 +301,13 @@ log = [f"{tag}: {a.stages}-stage, tail {not a.no_tail}, pass cap {a.cap}, tail c
 print(log[0], flush=True)
 rounds = tuple(int(x) for x in a.rounds.split(",")) if a.rounds else None
 if not rounds:
-    fold = M.month_folds(month, vm)
+    if a.val_range:
+        fold = M.month_folds(month, [])
+        for part in a.val_range.split(","):
+            lo, hi = (pd.Timestamp(x, tz="UTC").timestamp() for x in part.split(":"))
+            fold[(T >= lo) & (T < hi) & lab] = 0
+    else:
+        fold = M.month_folds(month, vm)
     va = lab & (fold == 0) & np.isfinite(y)
     p, parts, rounds, names, (imp, gimp) = run(fold, False, va, va=va)
     yv, cv, xv = y[va], cls[va], xS[va]
@@ -328,8 +336,8 @@ if not a.skip_final:
     res = tpl[["MVT_ID_mvt"]].merge(pd.DataFrame({"MVT_ID_mvt": ids[rank], "p": pr}), on="MVT_ID_mvt", how="left", validate="one_to_one")
     assert len(res) == len(tpl) and res.p.notna().all() and (res.MVT_ID_mvt.to_numpy() == tpl.MVT_ID_mvt.to_numpy()).all()
     out = tpl.copy(); out["TAXITIME_SEC_mvt"] = res.p.to_numpy("float64")
-    path = os.path.join(a.out, f"{a.team}_v{a.version}.parquet"); out.to_parquet(path, index=False)
-    np.savez(os.path.join(a.out, f"parts_{tag}.npz"), id=ids[rank], r=parts["r"], P=parts["P"], p=pr)
+    path = os.path.join(a.out, (a.name or f"{a.team}_v{a.version}") + ".parquet"); out.to_parquet(path, index=False)
+    np.savez(os.path.join(a.out, f"parts_{tag}.npz"), id=ids[rank], r=parts["r"], P=parts["P"], p=pr, delta=parts["delta"])
     log.append(f"wrote {path}: {len(out)} rows, mean {out.TAXITIME_SEC_mvt.mean():.1f}, max {out.TAXITIME_SEC_mvt.max():.1f}, "
                f"rows predicted above 1 h: {int((pr > 3600).sum())}, expected near-schedule-push rows {parts['P'][:, 1].sum():.0f}, day-shift {parts['P'][:, 2].sum():.1f}")
     print(log[-1], f"({time.time()-t0:.0f}s)", flush=True)

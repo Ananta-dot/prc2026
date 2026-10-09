@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Raw monthly parquet files -> one compact frame (categoricals + float epoch seconds)."""
+"""Raw monthly parquet files -> one compact frame (categoricals + float epoch seconds).
+
+  python3 prep.py ../data/raw ../data/processed/compact.parquet [final_ranking.parquet]
+"""
 import glob, os, sys
 import numpy as np, pandas as pd
 from pandas.api.types import union_categoricals
@@ -52,6 +55,6 @@ def load_raw(data_dir, ranking="ranking.parquet"):
 
 if __name__ == "__main__":
     data_dir, out = sys.argv[1], sys.argv[2]
-    df = load_raw(data_dir)
+    df = load_raw(data_dir, *sys.argv[3:4])     # optional third argument: the ranking file, e.g. final_ranking.parquet
     df.to_parquet(out, index=False)
     print(df.shape, round(df.memory_usage(deep=True).sum() / 1e6), "MB")
