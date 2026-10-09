@@ -3,6 +3,7 @@ credentials.json
 
 # challenge data and anything derived from it
 data/raw/*.parquet
+data/external/*.csv
 data/processed/*
 !data/processed/.gitkeep
 cache/
