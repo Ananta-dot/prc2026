@@ -23,18 +23,23 @@ def load(path):
     return feats, meta
 
 
+CLS_KEYS = ("opr", "opr_rwy", "opr_stand", "stand", "callsign", "flight")
+EXTRA = ("S_exp_opr", "S_exp_opr_stand", "S_exp_flight", "A_exp_opr_rwy", "A_exp_opr_stand")
+
+
 def te_names(meta):
     names = []
     for kc in [c for c in meta.columns if c.startswith("k_")]:
         n = kc[2:]
         names += ["te_" + n, "cnt_" + n] + (["q10_" + n] if n in TE_QUANT else [])
-    return names + [f"{a}_m_{b}" for a in INTER for b in ("te", "q10")]
+        names += (["rS_" + n, "rA_" + n] if n in CLS_KEYS else [])
+    return names + [f"{a}_m_{b}" for a in INTER for b in ("te", "q10")] + list(EXTRA)
 
 
-def matrix(path, feats, meta):
-    """One float32 matrix: stored features first, then room for the encodings."""
-    names = feats + te_names(meta)
-    X = np.empty((len(meta), len(names)), dtype=np.float32)
+def matrix(path, feats, meta, extra=()):
+    """One float32 matrix: stored features, then room for the encodings (and `extra` columns)."""
+    names = feats + te_names(meta) + list(extra)
+    X = np.full((len(meta), len(names)), np.nan, dtype=np.float32)
     for j, c in enumerate(feats):
         X[:, j] = pq.read_table(path, columns=[c]).column(0).to_numpy()
     return X, names
@@ -48,40 +53,59 @@ def month_folds(month, val_months):
     return np.array([f[int(m)] for m in month])
 
 
+def _oof(key, val, src, fold, smooth):
+    """Smoothed mean of `val` per key from the `src` rows, each src row excluding its own fold."""
+    t = pd.DataFrame({"k": key[src], "f": fold[src], "v": val[src]})
+    tot = t.groupby("k")["v"].agg(["sum", "count"])
+    byf = t.groupby(["k", "f"])["v"].agg(["sum", "count"])
+    s = pd.Series(key).map(tot["sum"]).fillna(0).to_numpy(dtype="float64").copy()
+    c = pd.Series(key).map(tot["count"]).fillna(0).to_numpy(dtype="float64").copy()
+    own = byf.reindex(pd.MultiIndex.from_arrays([key[src], fold[src]]))
+    s[src] -= own["sum"].to_numpy()
+    c[src] -= own["count"].to_numpy()
+    return (s + float(np.mean(val[src])) * smooth) / (c + smooth), c, t
+
+
 def fill_encodings(X, names, meta, y, labelled, fold, final=False, smooth=20.0, cap=3600.0):
-    """Out-of-fold mean / 10th percentile / count of the (capped) taxi time per key, written into X.
+    """Out-of-fold encodings per key, written into X.
+
+    Per key: mean / 10th percentile / count of the (capped) taxi time, and for some keys the
+    rate at which the off-block time equals the schedule (rS) or the NM off-block time (rA).
 
     Validation mode: fold-0 rows are encoded from folds 1..4 and contribute to nobody.
     Final mode: every labelled row contributes; labelled rows are encoded out of their own
     fold, ranking rows from all of them.
     """
+    col = {n: j for j, n in enumerate(names)}
     yc = np.clip(y, 0, cap)
     src = labelled & np.isfinite(y) & ((fold > 0) | final)
-    prior = float(np.mean(yc[src]))
+    xS, xA = X[:, col["xS"]].astype("float64"), X[:, col["xA"]].astype("float64")
+    with np.errstate(invalid="ignore"):
+        isS = np.nan_to_num(np.abs(y - xS) <= 7).astype("float64")
+        isA = np.nan_to_num(np.abs(y - xA) <= 67).astype("float64")
     folds = sorted(set(fold[src]))
-    col = {n: j for j, n in enumerate(names)}
     for kc in [c for c in meta.columns if c.startswith("k_")]:
         name, key = kc[2:], meta[kc].to_numpy()
-        t = pd.DataFrame({"k": key[src], "f": fold[src], "y": yc[src]})
-        tot = t.groupby("k")["y"].agg(["sum", "count"])
-        byf = t.groupby(["k", "f"])["y"].agg(["sum", "count"])
-        s = pd.Series(key).map(tot["sum"]).fillna(0).to_numpy(dtype="float64").copy()
-        c = pd.Series(key).map(tot["count"]).fillna(0).to_numpy(dtype="float64").copy()
-        own = byf.reindex(pd.MultiIndex.from_arrays([key[src], fold[src]]))
-        s[src] -= own["sum"].to_numpy()
-        c[src] -= own["count"].to_numpy()
-        X[:, col["te_" + name]] = (s + prior * smooth) / (c + smooth)
+        m, c, t = _oof(key, yc, src, fold, smooth)
+        X[:, col["te_" + name]] = m
         X[:, col["cnt_" + name]] = c
+        if name in CLS_KEYS:
+            X[:, col["rS_" + name]] = _oof(key, isS, src, fold, smooth)[0]
+            X[:, col["rA_" + name]] = _oof(key, isA, src, fold, smooth)[0]
         if name in TE_QUANT:
             q = np.full(len(key), np.nan, dtype="float32")
             for f in folds + [-1]:
                 rows = (src & (fold == f)) if f >= 0 else ~src
-                q10 = (t[t.f != f] if f >= 0 else t).groupby("k")["y"].quantile(0.1)
+                q10 = (t[t.f != f] if f >= 0 else t).groupby("k")["v"].quantile(0.1)
                 q[rows] = pd.Series(key[rows]).map(q10).to_numpy(dtype="float32")
             X[:, col["q10_" + name]] = q
+    base = X[:, col["te_stand_rwy"]]
     for a in INTER:
-        X[:, col[a + "_m_te"]] = X[:, col[a]] - X[:, col["te_stand_rwy"]]
+        X[:, col[a + "_m_te"]] = X[:, col[a]] - base
         X[:, col[a + "_m_q10"]] = X[:, col[a]] - X[:, col["q10_stand_rwy"]]
+    for n in EXTRA:   # expected shift if the off-block time is the reference time
+        kind, key = n[0], n[6:]
+        X[:, col[n]] = X[:, col[f"r{kind}_{key}"]] * (X[:, col["x" + kind]] - base)
 
 
 BASE = dict(objective="regression", metric="rmse", learning_rate=0.08, num_leaves=127,
@@ -90,10 +114,10 @@ BASE = dict(objective="regression", metric="rmse", learning_rate=0.08, num_leave
             verbose=-1, seed=7, num_threads=0)
 
 
-def dataset(X, names, label, **params):
+def dataset(X, names, label, free=False, **params):
     cats = [n for n in names if n.startswith("c_")]
     return lgb.Dataset(X, label=label, feature_name=names, categorical_feature=cats,
-                       free_raw_data=False, params={**BASE, **params})
+                       free_raw_data=free, params={**BASE, **params})
 
 
 def fit(ds, tr, va=None, rounds=5000, log=200, **params):

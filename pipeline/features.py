@@ -4,7 +4,7 @@
 Nothing here uses the target or any departure's off-block time, so every feature is
 available for the ranking rows exactly as it is for the training rows.
 
-  python3 features.py cache/compact.parquet cache/feat.parquet
+  python features.py cache/compact.parquet cache/feat.parquet
 """
 import sys
 import numpy as np
@@ -181,7 +181,21 @@ def build(df):
         F[f"n_ld_apt_since_{k}"] = ev["ld_apt"].count(qa, T, -w, -0.5)
 
     # --- the stand: who was on it before, who needed it next ---------------------------------
-    ib_std = Events(k_std[arr], blk[arr], typ=typ[arr], opr=opr[arr], txi=txi[arr], land=T_all[arr], rwy=rwc[arr])
+    # arrivals whose recorded in-block time is just the schedule / whose landing matches NM
+    a_dflt = (np.abs(blk[arr] - sched[arr]) <= 7).astype("float64")
+    a_nm = (np.abs(T_all[arr] - df["t_ARVT_3_flt"].to_numpy()[arr]) <= 67).astype("float64")
+    a_late = np.clip(T_all[arr] - sched[arr], -3600, 10800)
+    k_opr = combo(df["APT"], df["AIRCRAFT_OPERATOR_flt"])
+    qo = k_opr[dep]
+    ao = Events(k_opr[arr], blk[arr], dflt=a_dflt, nm=a_nm)
+    aa = Events(k_apt[arr], blk[arr], dflt=a_dflt, nm=a_nm)
+    for lo, hi in [(-10800, 10800), (-43200, 43200)]:
+        tag = f"{int(hi / 3600)}h"
+        F["arr_dflt_opr_" + tag] = ao.mean("dflt", qo, T, lo, hi)
+        F["arr_nm_opr_" + tag] = ao.mean("nm", qo, T, lo, hi)
+        F["arr_dflt_apt_" + tag] = aa.mean("dflt", qa, T, lo, hi)
+    ib_std = Events(k_std[arr], blk[arr], typ=typ[arr], opr=opr[arr], txi=txi[arr], land=T_all[arr],
+                    rwy=rwc[arr], dflt=a_dflt, late=a_late)
     to_std = Events(k_std[dep], T)
     my_typ = d["AIRCRAFT_TYPE_mvt"].cat.codes.to_numpy().astype("float64")
     my_opr = d["AIRCRAFT_OPERATOR_flt"].cat.codes.to_numpy().astype("float64")
@@ -190,8 +204,11 @@ def build(df):
         F[f"std_ib_prev{j}"] = gap
         F[f"std_ib_prev{j}_sametype"] = np.where(pos >= 0, ib_std.take("typ", pos) == my_typ, np.nan)
         F[f"std_ib_prev{j}_sameopr"] = np.where(pos >= 0, ib_std.take("opr", pos) == my_opr, np.nan)
+        if j <= 2:
+            F[f"std_ib_prev{j}_dflt"] = ib_std.take("dflt", pos)
         if j == 1:
             F["std_ib_prev1_txi"] = ib_std.take("txi", pos)
+            F["std_ib_prev1_late"] = ib_std.take("late", pos)
     F["std_ib_next1"] = ib_std.next(qs, T, 1)[0]
     for j in (1, 2):
         F[f"std_to_prev{j}"] = to_std.prev(qs, T, j)[0]
@@ -243,7 +260,7 @@ def build(df):
     F["dow"] = ((np.floor(loc / 86400) + 4) % 7)
     ts = pd.to_datetime(T, unit="s")
     F["doy"] = ts.dayofyear.to_numpy()
-    F = pd.DataFrame(dict(F), copy=False)
+    del ev, ib_std, to_std, ao, aa, ax
     cats = {"c_apt": d["APT"], "c_type": d["AIRCRAFT_TYPE_mvt"], "c_wake": d["WK_TBL_CAT_flt"],
             "c_seg": d["MARKET_SEGMENT_flt"], "c_opr": d["AIRCRAFT_OPERATOR_flt"],
             "c_ftype": d["FLIGHT_TYPE_flt"], "c_rule": d["FLIGHT_RULE_flt"]}
@@ -255,7 +272,7 @@ def build(df):
           "rwy_type": combo(d["APT"], d["RUNWAY_mvt"], d["AIRCRAFT_TYPE_mvt"]),
           "opr_rwy": combo(d["APT"], d["AIRCRAFT_OPERATOR_flt"], d["RUNWAY_mvt"]),
           "opr_stand": combo(d["APT"], d["AIRCRAFT_OPERATOR_flt"], d["STAND_mvt"]),
-          "ades": combo(d["APT"], d["ADES_mvt"]), "flight": combo(d["APT"], d["FLIGHT_mvt"]),
+          "opr": qo, "ades": combo(d["APT"], d["ADES_mvt"]), "flight": combo(d["APT"], d["FLIGHT_mvt"]),
           "callsign": combo(d["APT"], d["CALLSIGN_flt"])}
     for k, v in te.items():
         extra["k_" + k] = v.astype("int32")
@@ -267,13 +284,15 @@ def build(df):
     extra["m_apt"] = d["APT"].cat.codes.to_numpy().astype("int8")
     extra["m_month"] = ts.month.to_numpy().astype("int8")
     extra["m_T"] = T
-    F = pd.concat([F, pd.DataFrame(extra)], axis=1)
-    return F, list(d["APT"].cat.categories)
+    out = dict(F)
+    out.update(extra)
+    return out, list(d["APT"].cat.categories)
 
 
 if __name__ == "__main__":
+    import pyarrow as pa
+    import pyarrow.parquet as pq
     src, out = sys.argv[1], sys.argv[2]
-    F, apts = build(pd.read_parquet(src))
-    F.attrs["airports"] = apts
-    F.to_parquet(out, index=False)
-    print(F.shape, "airports:", apts)
+    cols, apts = build(pd.read_parquet(src))
+    pq.write_table(pa.table(cols), out)
+    print(len(next(iter(cols.values()))), "rows,", len(cols), "columns; airports:", apts)

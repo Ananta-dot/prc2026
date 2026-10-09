@@ -1,0 +1,11 @@
+s2a: two-stage, cap 3600.0, lr 0.08, leaves 127, stage-1 rounds 300
+  stage 1 done (468s)
+features 244, val rows 344419, rounds 1286; stage-1 alone on truth<=3600: 210.03
+  val RMSE on rows with truth <= 3000: 191.27
+  val RMSE on rows with truth <= 3600: 199.29
+  val RMSE on rows with truth <= 5400: 219.80
+  val RMSE on rows with truth <= 7200: 236.03
+  by airport (truth<=3600): EDDF 171, EDDM 158, EGLL 210, EHAM 161, LEBL 213, LEMD 166, LFPG 221, LIRF 287, LSZH 164, LTFM 213
+  by month (truth<=3600):   1 188, 7 208
+  top features: s2_yhat 0.515, s2_exc 0.096, q10_stand_rwy 0.066, te_stand_rwy 0.061, te_stand 0.036, xE 0.019, xmin_SELI 0.014, s2_exc_rwy_bef 0.014, c_opr 0.013, c_rwy 0.013, s2_exc_rel 0.010, te_rwy_type 0.009, c_type 0.007, q10_stand 0.006, te_opr_rwy 0.004, s2_exc_rwy_aft 0.004, s2_exc_apt_bef 0.004, s2_exc_apt_aft 0.003, xA 0.003, s2_prev1_exc 0.002, s2_next1_exc 0.002, xE_m_q10 0.002, doy 0.002, xmax_SELI 0.001, s2_nld_apt_during 0.001, d_EA 0.001, s2_next2_exc 0.001, xE_m_te 0.001, std_ib_prev1 0.001, xA_min_floor 0.001 (1139s)
+wrote out/courageous-onion_v2.parquet: 344841 rows, mean 1028.8, min 0.0, max 3816.6 (1368s)
