@@ -48,8 +48,11 @@ python3 upload.py pull
 python3 prep.py ../data/raw ../data/processed/compact_final.parquet final_ranking.parquet
 python3 features.py ../data/processed/compact_final.parquet ../data/processed/feat_final.parquet ../data/external
 python3 stage2.py --feat ../data/processed/feat_final.parquet --compact ../data/processed/compact_final.parquet \
-    --template ../data/raw/final_submitting.parquet --out ../outputs --name courageous-onion_final \
+    --template ../data/raw/final_submitting.parquet --out ../outputs --name fin_seed11 \
     --stages 3 --seed 11 --lr 0.05 --rounds 2420,300,300
+python3 stage2.py --feat ../data/processed/feat_final.parquet --compact ../data/processed/compact_final.parquet \
+    --template ../data/raw/final_submitting.parquet --out ../outputs --name fin_seed7 \
+    --stages 3 --seed 7 --lr 0.05 --rounds 2681,300,851
 python3 upload.py put ../outputs/courageous-onion_final.parquet
 ```
 
