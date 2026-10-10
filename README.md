@@ -54,7 +54,8 @@ python3 upload.py put ../outputs/courageous-onion_final.parquet
 ```
 
 `--rounds` (regressor, gate, push-delay model) skips the validation pass and uses the
-round counts found on the held-out months.
+round counts found on the held-out months. The submitted file is the mean of the two runs,
+with rows predicted above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
 
 ## Layout
 

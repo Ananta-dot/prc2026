@@ -18,7 +18,7 @@ handles everything else; the prediction is the probability-weighted mean.
   python3 stage2.py --feat ../data/processed/feat.parquet --compact ../data/processed/compact.parquet \\
       --template ../data/raw/submitting.parquet --out ../outputs --version 4 --stages 3
 """
-import argparse, gc, os, time, warnings
+import argparse, ctypes, gc, os, time, warnings
 import numpy as np, pandas as pd
 import lightgbm as lgb
 import model as M
@@ -103,6 +103,15 @@ arr_k = arr.APT.cat.codes.to_numpy().astype("int64")
 arr_land = Events(arr_k, arr.t_MVT_TIME_UTC_mvt.to_numpy())
 arr_inbl = Events(arr_k, arr.t_BLOCK_TIME_UTC_mvt.to_numpy())
 del arr
+
+
+def trim():
+    """Hand freed memory back to the system (matters on machines short of memory)."""
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 def surface_features(pred, rwy, usual):
@@ -222,6 +231,7 @@ def run(fold, final, pred_rows, rounds=None, va=None):
     X[:, names.index("mid_utc")] = mid_utc
     X[:, names.index("mid_s_utc")] = sched_tod
     M.fill_encodings(X, names, meta, y, lab, fold, final=final)
+    trim()
     col = {n: j for j, n in enumerate(names)}
     cats = [n for n in names if n.startswith("c_")]
     universe = lab & ((fold > 0) | final)          # rows that get an out-of-fold prediction
@@ -239,6 +249,7 @@ def run(fold, final, pred_rows, rounds=None, va=None):
             X = np.array(X)
         for n, v in surface_features(pred, rwy, usual).items():
             X[:, col[n]] = v
+        trim()
         print(f"  pass {stage} done ({time.time()-t0:.0f}s)", flush=True)
     if a.mm:
         X = park(X)

@@ -1,0 +1,18 @@
+courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
+Mean of two runs of stage2.py --stages 3 --lr 0.05 with the per-airport gate correction, trained on all of 2025:
+  seed 7  (--rounds 2681,300,851) and seed 11 (--rounds 2420,300,300); rows predicted above 4 h taken from the seed-7 run.
+The same recipe on the January+July set is v5: leaderboard 262.61, validation (Jan+Jul 2025, all rows) 297.9.
+On the 344,841 rows shared with v5 the two files agree to an RMS difference of 35.7 s (correlation 0.9985).
+
+fin7: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
+  pass 1 done (591s)
+  pass 2 done (1172s)
+  gate correction by airport (logits): {'EDDF': 0.17, 'EDDM': 0.04, 'EGLL': 0.2, 'EHAM': 0.24, 'LEBL': 0.0, 'LEMD': 0.0, 'LFPG': 0.31, 'LIRF': 0.1, 'LSZH': 0.08, 'LTFM': 0.7}
+  gate done, rounds 345 (1312s)
+wrote out/fin_seed7.parquet: 670790 rows, mean 1022.3, max 102217.8, rows predicted above 1 h: 1490, expected near-schedule-push rows 1635, day-shift 5.4 (3299s)
+fin11: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
+  pass 1 done (630s)
+  pass 2 done (1179s)
+  gate correction by airport (logits): {'EDDF': 0.16, 'EDDM': 0.04, 'EGLL': 0.21, 'EHAM': 0.22, 'LEBL': 0.0, 'LEMD': 0.0, 'LFPG': 0.35, 'LIRF': 0.09, 'LSZH': 0.09, 'LTFM': 0.7}
+  gate done, rounds 345 (1313s)
+wrote out/fin_seed11.parquet: 670790 rows, mean 1021.4, max 102264.0, rows predicted above 1 h: 1447, expected near-schedule-push rows 1589, day-shift 5.4 (3120s)
