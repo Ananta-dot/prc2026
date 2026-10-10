@@ -42,7 +42,6 @@ while pages < 400:
         print("top-level keys:", list(page.keys()) if isinstance(page, dict) else "list")
     got = items_of(page)
     rows += got
-    print(f"  page {pages}: {len(got)} entries (total {len(rows)})", flush=True)
     cursor = page.get("nextCursor") if isinstance(page, dict) else None
     if not cursor or not got:
         break
@@ -59,6 +58,34 @@ if rows:
     print(f"\nentries mentioning {team}: {len(mine)}")
     for r in mine:
         print("  ", json.dumps(r)[:400])
+
+# standings: each team's best score
+best = {}
+for r in rows:
+    try:
+        sc, tn = float(r["score"]), r["teamName"]
+    except (KeyError, TypeError, ValueError):
+        continue
+    if sc == sc and (tn not in best or sc < best[tn][0]):
+        best[tn] = (sc, r.get("filename", ""))
+order = sorted(best.items(), key=lambda kv: kv[1][0])
+if order:
+    names = [k for k, _ in order]
+    print(f"\nstandings: {len(order)} teams with a score")
+    show = set(range(min(10, len(order))))
+    if team in best:
+        i = names.index(team)
+        print(f"{team}: rank {i + 1} of {len(order)}, best {best[team][0]:.2f} ({best[team][1]})")
+        show |= set(range(max(0, i - 3), min(len(order), i + 4)))
+    last = -1
+    for j in sorted(show):
+        if j != last + 1:
+            print("   ...")
+        tn, (sc, fn) = order[j]
+        print(f"   {j + 1:4d}  {sc:9.2f}  {tn}  ({fn})" + ("   <--" if tn == team else ""))
+        last = j
+    for cut in (220, 240, 260, 280, 300, 400, 500):
+        print(f"   teams below {cut}: {sum(1 for _, (sc, _) in order if sc < cut)}")
 
 # list the API's other endpoints, in case one reports per-team submission status or errors
 for doc in ("/v3/api-docs", "/openapi.json", "/swagger.json", "/api-docs"):
