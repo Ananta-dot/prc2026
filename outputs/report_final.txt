@@ -1,8 +1,8 @@
 courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
-Mean of two runs of stage2.py --stages 3 --lr 0.05 with the per-airport gate correction, trained on all of 2025:
-  seed 7  (--rounds 2681,300,851) and seed 11 (--rounds 2420,300,300); rows predicted above 4 h taken from the seed-7 run.
-The same recipe on the January+July set is v5: leaderboard 262.61, validation (Jan+Jul 2025, all rows) 297.9.
-On the 344,841 rows shared with v5 the two files agree to an RMS difference of 35.7 s (correlation 0.9985).
+Mean of three runs of stage2.py --stages 3 --lr 0.05 with the per-airport gate correction, trained on all of 2025:
+  seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seed 23 (--rounds 2550,300,575); rows predicted above 4 h from the seed-7 run.
+The two-run version of this recipe on the January+July set is v5 (leaderboard 262.61; validation, Jan+Jul 2025, all rows: 297.9); the three-run version is v6.
+On the 344,841 rows shared with v6 the two files agree to an RMS difference of 31.1 s (correlation 0.9988).
 
 fin7: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
   pass 1 done (591s)

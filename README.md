@@ -57,8 +57,9 @@ python3 upload.py put ../outputs/courageous-onion_final.parquet
 ```
 
 `--rounds` (regressor, gate, push-delay model) skips the validation pass and uses the
-round counts found on the held-out months. The submitted file is the mean of the two runs,
-with rows predicted above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
+round counts found on the held-out months. A third run uses `--name fin_seed23 --seed 23
+--rounds 2550,300,575`. The final file is the mean of the three runs, with rows predicted
+above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
 
 ## Layout
 
@@ -106,6 +107,17 @@ with rows predicted above 4 h taken from the seed-7 run (`outputs/report_final.t
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.
 
+## Things that did not help
+
+Each was checked on two held-out month pairs (January+July and February+August 2025):
+
+- features linking a departure to the same airline's previous arrival on its stand (an
+  arrival whose in-block time is a default predicts a schedule-default off-block time,
+  72% against 29% at Rome, but the gate already had that information);
+- a separate gate for Rome, and a separate regressor for late flights;
+- other thresholds for the near-schedule class (20 to 90 minutes);
+- arrival taxi-in times as a signal of year-on-year drift in taxi-out times.
+
 ## External data
 
 Airport weather observations (METAR) from the Iowa Environmental Mesonet ASOS archive,
@@ -123,6 +135,7 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v3 | `stage2.py --stages 3`: weather, gate for near-schedule off-block times, record-type rules | 206.69 | 304.31 | 264.31 |
 | v4 | mean of two `stage2.py --stages 3` runs (seed 7 / lr 0.08 and seed 11 / lr 0.05), refined rules for flights more than 8 h late | 203.0 | 299.8 | 262.69 |
 | v5 | mean of two `stage2.py --stages 3 --lr 0.05` runs (seed 7 with the per-airport gate correction, seed 11 without) | 203.4 | 297.9 | 262.61 |
+| v6 | as v5 with a third run (seed 23) | - | - | - |
 
 Two of the held-out rows (the Paris records above) account for 173 of the 304 in quadrature; without
 them the all-rows figure is 250.83 for v3, 245.3 for v4 and 243.0 for v5. The first two versions were built on the wrong

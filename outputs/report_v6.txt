@@ -1,0 +1,1 @@
+v6 = mean of three full runs of stage2.py --stages 3 --lr 0.05 (seeds 7, 11, 23; the first and third with the per-airport gate correction); rows predicted above 4 h from the seed-7 run. Not separately validated: the two-run version (v5) validated at 297.9 on all rows of Jan+Jul 2025.
