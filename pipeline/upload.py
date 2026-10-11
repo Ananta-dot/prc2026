@@ -5,11 +5,12 @@
   python3 upload.py pull                      # download every challenge file into ../data/raw
   python3 upload.py list                      # what is in the team bucket
   python3 upload.py put ../outputs/courageous-onion_v1.parquet
+  python3 upload.py put ../outputs/courageous-onion_final.parquet --replace   # overwrite the final file (old copy is saved first)
   python3 upload.py list prc-2026-datasets    # the shared data bucket
   python3 upload.py buckets                   # every bucket these keys can see
   python3 upload.py get prc-2026-datasets final_ranking.parquet ../data/raw/final_ranking.parquet
 """
-import json, os, sys
+import json, os, sys, time
 from minio import Minio
 
 ENDPOINT = "s3.opensky-network.org"
@@ -33,7 +34,12 @@ elif cmd == "put":
     path = sys.argv[2]
     name = os.path.basename(path)
     if name in {o.object_name for o in s3.list_objects(TEAM_BUCKET)}:
-        sys.exit(f"{name} is already in {TEAM_BUCKET}; use the next version number instead")
+        if "--replace" not in sys.argv or not name.endswith("_final.parquet"):
+            sys.exit(f"{name} is already in {TEAM_BUCKET}; use the next version number instead"
+                     + (" (the final file can be overwritten with --replace)" if name.endswith("_final.parquet") else ""))
+        keep = os.path.join(os.path.dirname(os.path.abspath(path)), time.strftime("replaced_%Y%m%d_%H%M%S_") + name)
+        s3.fget_object(TEAM_BUCKET, name, keep)        # keep what was there, in case it has to go back
+        print(f"saved the copy that was in the bucket as {keep}")
     s3.fput_object(TEAM_BUCKET, name, path)
     print(f"uploaded {name}; bucket now holds:")
     listing(TEAM_BUCKET)

@@ -32,6 +32,19 @@ python3 upload.py put ../outputs/courageous-onion_v3.parquet
 python3 leaderboard.py           # the team's scores from the official leaderboard API
 ```
 
+From v7 on, the submitted file is a blend of several `stage2.py` runs with the pairing rules
+(see "What the data showed") enforced on top:
+
+```
+python3 link.py ../data/processed/compact.parquet ../data/processed/link.parquet
+python3 build.py --compact ../data/processed/compact.parquet --link ../data/processed/link.parquet \
+    --template ../data/raw/submitting.parquet --out ../outputs/courageous-onion_v7.parquet \
+    --parts ../outputs/parts_a.npz,../outputs/parts_b.npz,../outputs/parts_c.npz
+```
+
+Each `stage2.py` run saves `parts_<tag>.npz` (regressor, class probabilities, prediction) next
+to its submission file; `build.py` applies the rules to every run and averages them.
+
 `stage2.py` holds out January and July 2025, prints the validation RMSE over every held-out
 row, then refits on all of 2025 and writes `<team>_v<version>.parquet` in the template's
 row order. `--threads 0` (default) uses every core. On a machine with less than about 8 GB
@@ -71,6 +84,9 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
 | `pipeline/model.py` | out-of-fold target encodings, LightGBM helpers, validation report |
 | `pipeline/train.py` | single model: validation, final fit, submission file |
 | `pipeline/stage2.py` | the model: out-of-fold light passes, surface-state features from the estimated off-block times, a gate for late flights whose off-block time is near the schedule, rules for the rarest record types, final regressor |
+| `pipeline/link.py` | flight plans of departures without NM columns, recovered from the arrival record at the destination |
+| `pipeline/posthoc.py` | the pairing rules: taxi time inside (or outside) one hour of take-off minus the plan's off-block time |
+| `pipeline/build.py` | blend runs of `stage2.py` and enforce the rules; writes the submission file |
 | `pipeline/upload.py` | list / download / upload against the OpenSky object store |
 | `pipeline/leaderboard.py` | read the team's scores from the official leaderboard API |
 | `outputs/report_v*.txt` | validation report for each submitted version |
@@ -103,6 +119,27 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
   seen. Out-of-fold gate predictions measure that per airport, and the gate is shifted
   upwards by that amount (at most 0.7 logits). On six held-out Istanbul snow days this
   lowers the RMSE from 276.7 to 271.2; on ordinary months it changes little.
+- **How movements were paired with Network Manager flights.** A departure carries NM
+  columns only if its off-block time is within one hour of the flight plan's last filed
+  off-block time (`LOBT_flt`): over the 2.06 million matched departures of 2025 the
+  difference runs from -3606 s to +3606 s (one hour plus the 6 s noise) and stops dead.
+  Arrivals are paired the same way on landing time against `ARVT_3_flt`. Two things follow.
+  - *Matched departure:* the taxi time lies within 3606 s of take-off minus LOBT. The
+    model's blend of "ordinary taxi time" and "off-block at schedule" often falls outside
+    that window, or one of the two is impossible; `posthoc.py` drops the impossible part
+    and clips the rest. When the plan is so old that even the lower end of the window is
+    above an ordinary taxi time, the off-block time is known to be near the plan's.
+  - *Unmatched departure:* the taxi time lies outside that window, but LOBT is not given.
+    When the destination is another of the ten airports, the same flight's arrival record
+    is matched there (on landing time) and carries the plan; `link.py` finds it for about
+    90% of such flights. If the schedule is within the hour of LOBT, an off-block time at
+    schedule would have been paired, so the record is an ordinary one (1,764 of 1,764
+    cases in 2025). If LOBT is within about an hour of take-off, an ordinary off-block time
+    would have been paired, so the off-block time is the schedule (25 of 27 at Rome) or
+    just over an hour before the plan (Istanbul).
+  On held-out months these rules alone, applied to unchanged models, lower the RMSE from
+  244.59 to 240.85 (January+July 2025, without the two Paris records below), from 241.53
+  to 240.37 (February+August) and from 265.16 to 262.88 (six Istanbul snow days).
 - A handful of records match nothing (for example two Paris departures in January 2025
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.
@@ -116,7 +153,15 @@ Each was checked on two held-out month pairs (January+July and February+August 2
   72% against 29% at Rome, but the gate already had that information);
 - a separate gate for Rome, and a separate regressor for late flights;
 - other thresholds for the near-schedule class (20 to 90 minutes);
-- arrival taxi-in times as a signal of year-on-year drift in taxi-out times.
+- arrival taxi-in times as a signal of year-on-year drift in taxi-out times;
+- pairing-window features and airline-level shares of unmatched late flights as inputs to
+  the gate (the rules above already take what there is; the gate did not improve);
+- a small separate model for departures with an old flight plan (worse than the rule);
+- the first-seen time of the aircraft in OpenSky's public flights API as a proxy for the
+  off-block time: at Heathrow, Schiphol and Rome it is the take-off moment (median gap
+  -34 s, +15 s, -19 s); at Zurich it is on the ground but adding it made a held-out day
+  worse (RMSE 191 against 157). `pipeline/opensky_probe.py` is the probe; no OpenSky data
+  is used in any submission.
 
 ## External data
 
