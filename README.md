@@ -87,7 +87,7 @@ python3 dfl_rate.py ../data/processed/compact_final.parquet ../data/processed/df
 python3 build.py --compact ../data/processed/compact_final.parquet --link ../data/processed/link_final.parquet \
     --tz ../data/processed/tz_final.parquet --dflt ../data/processed/dfl_final.parquet \
     --template ../data/raw/final_submitting.parquet --out ../outputs/courageous-onion_final.parquet \
-    --parts ../outputs/parts_fin7.npz,../outputs/parts_fin11.npz,../outputs/parts_fin23.npz,../outputs/parts_fin31.npz \
+    --parts ../outputs/parts_fin7.npz,../outputs/parts_fin11.npz,../outputs/parts_fin23.npz,../outputs/parts_fin31.npz,../outputs/parts_fin47.npz \
     --extra ../outputs/lb_rules.parquet:3
 python3 upload.py put ../outputs/courageous-onion_final.parquet --replace
 ```
