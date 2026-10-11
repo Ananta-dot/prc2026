@@ -62,7 +62,7 @@ def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None, tz_summe
     if dflt_q is not None:
         q = np.nan_to_num(np.asarray(dflt_q, "float64"))
         ok = np.where(m, (xS >= xL - PAD - 60) & (xS <= xL + PAD + 60), ~A)      # schedule must be a possible off-block time
-        H = (q >= 0.9) & (xS > -600) & (xS <= 14400) & ok
+        H = (q >= 0.9) & (xS > 120) & (xS <= 14400) & ok     # no 2025 record of this kind has a take-off at or before the schedule
         w = np.where(q >= 0.99, 1.0, np.where(q >= 0.95, 0.9, 0.8))
         out = np.where(H, w * xS + (1 - w) * out, out)
     if stats is not None:

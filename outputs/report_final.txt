@@ -1,14 +1,15 @@
 courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
 
 Built by pipeline/build.py from
-  four runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
-    seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seed 23 and seed 31 (--rounds 2550,300,575);
-  and, for the January and July flights, the three runs on the leaderboard ranking set behind v6 (weight 3 to 4).
+  five runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
+    seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seeds 23, 31 and 47 (--rounds 2550,300,575);
+  and, for the January and July flights, the three runs on the leaderboard ranking set behind v6 (weight 3 to 5).
 Rules of pipeline/posthoc.py applied to every run before averaging (rows whose plain average is above 4 h come from the seed-7 run):
   pairing window for matched departures; flight plans linked from the arrival record for unmatched ones (778 late flights:
   679 ordinary, 28 near-schedule, 71 with a partly updated plan); Rome summer-time records (8 flights);
-  Rome flight numbers that are always schedule-default (1,100 flights).
-Against the first final file (three runs, no rules): RMS change 46.7 s; 5,533 predictions move by more than a minute, 260 by more than ten.
+  Rome flight numbers that are always schedule-default (about 1,070 flights).
+Against the first final file (three runs, no rules): RMS change about 47 s; about 5,500 predictions move by more than a minute, 260 by more than ten.
+No matched departure is predicted outside its pairing window any more (124 were in the first final file).
 
-Validation of the rules on unchanged models (seed-7 run, 2025): Jan+Jul 244.59 -> 240.35 without the two Paris records
-(299.19 -> 295.73 with them); Feb+Aug 241.53 -> 239.59; six Istanbul snow days 265.16 -> 262.88.
+Validation of the rules on unchanged models (seed-7 run, 2025): Jan+Jul 244.59 -> 240.34 without the two Paris records
+(299.19 -> 295.73 with them); Feb+Aug 241.53 -> 239.57; six Istanbul snow days 265.16 -> 262.88.

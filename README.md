@@ -77,7 +77,7 @@ python3 upload.py put ../outputs/courageous-onion_final.parquet
 ```
 
 `--rounds` (regressor, gate, push-delay model) skips the validation pass and uses the
-round counts found on the held-out months. Further runs use `--seed 23`, `31`, ... with
+round counts found on the held-out months. Further runs use `--seed 23`, `31` and `47` with
 `--rounds 2550,300,575`. The final file is then built like the leaderboard files:
 
 ```
@@ -175,8 +175,8 @@ are in both ranking sets. See `outputs/report_final.txt`.
     for the identity). `posthoc.py` predicts take-off minus schedule when the flight
     number's 2025 rate is 99% or more, and leans towards it from 90%.
   On held-out months these rules alone, applied to unchanged models, lower the RMSE from
-  244.59 to 240.35 (January+July 2025, without the two Paris records below) and from
-  241.53 to 239.59 (February+August); on six Istanbul snow days from 265.16 to 262.88.
+  244.59 to 240.34 (January+July 2025, without the two Paris records below) and from
+  241.53 to 239.57 (February+August); on six Istanbul snow days from 265.16 to 262.88.
 - A handful of records match nothing (for example two Paris departures in January 2025
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.
@@ -195,9 +195,10 @@ Each was checked on two held-out month pairs (January+July and February+August 2
   the gate (the rules above already take what there is; the gate did not improve);
 - a small separate model for departures with an old flight plan (worse than the rule);
 - a second-stage gate that sees the first gate's probabilities for other late flights at
-  the airport around the same time, and event features counting matched neighbours whose
-  window certifies a long taxi time (`cert`-type features; strongly related to the class,
-  10 to 40 times the base rate, but the gate did not improve);
+  the airport around the same time, event features counting matched neighbours whose
+  window certifies a long taxi time (strongly related to the class, 10 to 40 times the
+  base rate, but the gate did not improve), a schedule-default rate computed only on
+  clearly delayed flights, and day-level shares of flight plans left at the schedule;
 - a physical lower bound from the next aircraft parking on the same stand (holds for 98%
   of cases when that happens within 20 minutes of take-off, but not beyond: stand codes
   are shared or aircraft are towed);
