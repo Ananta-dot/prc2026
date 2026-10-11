@@ -17,6 +17,7 @@ ap.add_argument("--compact", required=True); ap.add_argument("--link", required=
 ap.add_argument("--parts", required=True); ap.add_argument("--out", required=True); ap.add_argument("--extra", default="")
 ap.add_argument("--no-rules", action="store_true")
 ap.add_argument("--tz", default="", help="candidates from tzcand.py (Rome records shifted by the UTC offset)")
+ap.add_argument("--dflt", default="", help="rates from dfl_rate.py (Rome flight numbers that are always schedule-default)")
 a = ap.parse_args()
 t = pd.read_parquet(a.template)
 c = pd.read_parquet(a.compact, columns=["MVT_ID_mvt", "APT", "t_MVT_TIME_UTC_mvt", "t_SCHED_TIME_UTC_mvt", "t_LOBT_flt", "t_AOBT_3_flt", "is_rank", "is_dep"])
@@ -26,12 +27,13 @@ T, S, LOBT, AOBT, lirf = c.t_MVT_TIME_UTC_mvt.to_numpy(), c.t_SCHED_TIME_UTC_mvt
 tzs = None
 if a.tz:
     tz = pd.read_parquet(a.tz); tzs = pd.Series(True, index=tz.MVT_ID_mvt[tz.off == 7200]).reindex(c.index).fillna(False).to_numpy(bool)
+dq = pd.read_parquet(a.dflt).set_index("MVT_ID_mvt").q.reindex(c.index).to_numpy() if a.dflt else None
 raw, new = [], []
 for f in a.parts.split(","):
     z = np.load(f); o = pd.Series(np.arange(len(z["id"])), index=z["id"]).reindex(c.index).to_numpy()
     p, r, P = z["p"][o], z["r"][o], z["P"][o]
     st = {}
-    raw.append(p); new.append(p if a.no_rules else posthoc.apply(p, r, P[:, 1], P[:, 2], T, S, LOBT, AOBT, lk, lirf, st, tzs))
+    raw.append(p); new.append(p if a.no_rules else posthoc.apply(p, r, P[:, 1], P[:, 2], T, S, LOBT, AOBT, lk, lirf, st, tzs, dq))
     print(f"{os.path.basename(f)}: {st}")
 m0 = np.mean(raw, axis=0); far = m0 > 14400
 out = np.where(far, new[0], np.mean(new, axis=0)); base = np.where(far, raw[0], m0)

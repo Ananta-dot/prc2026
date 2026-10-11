@@ -38,9 +38,10 @@ From v7 on, the submitted file is a blend of several `stage2.py` runs with the p
 ```
 python3 link.py ../data/processed/compact.parquet ../data/processed/link.parquet
 python3 tzcand.py ../data/processed/compact.parquet ../data/processed/tz.parquet
+python3 dfl_rate.py ../data/processed/compact.parquet ../data/processed/dfl.parquet
 python3 build.py --compact ../data/processed/compact.parquet --link ../data/processed/link.parquet \
-    --tz ../data/processed/tz.parquet \
-    --template ../data/raw/submitting.parquet --out ../outputs/courageous-onion_v9.parquet \
+    --tz ../data/processed/tz.parquet --dflt ../data/processed/dfl.parquet \
+    --template ../data/raw/submitting.parquet --out ../outputs/courageous-onion_v10.parquet \
     --parts ../outputs/parts_a.npz,../outputs/parts_b.npz,../outputs/parts_c.npz \
     --extra ../outputs/final_rules.parquet:3
 ```
@@ -93,6 +94,7 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
 | `pipeline/link.py` | flight plans of departures without NM columns, recovered from the arrival record at the destination |
 | `pipeline/posthoc.py` | the pairing rules: taxi time inside (or outside) one hour of take-off minus the plan's off-block time |
 | `pipeline/tzcand.py` | Rome departures whose off-block time is likely shifted by the UTC offset |
+| `pipeline/dfl_rate.py` | Rome flight numbers and airlines whose off-block time is (nearly) always the schedule |
 | `pipeline/build.py` | blend runs of `stage2.py` and enforce the rules; writes the submission file |
 | `pipeline/upload.py` | list / download / upload against the OpenSky object store |
 | `pipeline/leaderboard.py` | read the team's scores from the official leaderboard API |
@@ -152,9 +154,14 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
     regressor had learned an average of about 5,000 s for this group; `posthoc.py` raises
     the summer ones to 7,900 s. (In winter the shift is one hour and the regressor's value
     is already about right.) Other airports show nothing of the kind.
+  - *Rome, always the schedule.* For some airlines at Rome the off-block time equals the
+    schedule on every flight, so the taxi time is exactly take-off minus schedule. A tree
+    model only approximates that identity (RMSE about 300 s on those flights, against 4 s
+    for the identity). `posthoc.py` predicts take-off minus schedule when the flight
+    number's 2025 rate is 99% or more, and leans towards it from 90%.
   On held-out months these rules alone, applied to unchanged models, lower the RMSE from
-  244.59 to 240.60 (January+July 2025, without the two Paris records below), from 241.53
-  to 239.89 (February+August) and from 265.16 to 262.88 (six Istanbul snow days).
+  244.59 to 240.35 (January+July 2025, without the two Paris records below) and from
+  241.53 to 239.59 (February+August); on six Istanbul snow days from 265.16 to 262.88.
 - A handful of records match nothing (for example two Paris departures in January 2025
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.
@@ -173,7 +180,12 @@ Each was checked on two held-out month pairs (January+July and February+August 2
   the gate (the rules above already take what there is; the gate did not improve);
 - a small separate model for departures with an old flight plan (worse than the rule);
 - a second-stage gate that sees the first gate's probabilities for other late flights at
-  the airport around the same time;
+  the airport around the same time, and event features counting matched neighbours whose
+  window certifies a long taxi time (`cert`-type features; strongly related to the class,
+  10 to 40 times the base rate, but the gate did not improve);
+- a physical lower bound from the next aircraft parking on the same stand (holds for 98%
+  of cases when that happens within 20 minutes of take-off, but not beyond: stand codes
+  are shared or aircraft are towed);
 - the first-seen time of the aircraft in OpenSky's public flights API as a proxy for the
   off-block time: at Heathrow, Schiphol and Rome it is the take-off moment (median gap
   -34 s, +15 s, -19 s); at Zurich it is on the ground but adding it made a held-out day

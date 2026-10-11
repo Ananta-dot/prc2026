@@ -16,7 +16,7 @@ import numpy as np
 PAD = 3606.0
 
 
-def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None, tz_summer=None):
+def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None, tz_summer=None, dflt_q=None):
     p, r, P1, P2 = (np.asarray(v, "float64").copy() for v in (p, r, P1, P2))
     xS = T - S
     xL = T - LOBT
@@ -56,8 +56,17 @@ def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None, tz_summe
     # 18 of 25 cases in 2025 (taxi time = ordinary taxi time + 7200 s) and longer still in 3 more.
     G = np.zeros(len(out), bool) if tz_summer is None else (np.asarray(tz_summer, bool) & ~m & (xS <= 3600) & (xS >= -1800))
     out = np.where(G, np.maximum(out, 7900.0), out)
+    # Rome: for some airlines the off-block time is always the schedule, so the taxi time is take-off minus schedule.
+    # A tree model only approximates that identity (RMSE about 300 s on those flights); state it instead.
+    H = np.zeros(len(out), bool)
+    if dflt_q is not None:
+        q = np.nan_to_num(np.asarray(dflt_q, "float64"))
+        ok = np.where(m, (xS >= xL - PAD - 60) & (xS <= xL + PAD + 60), ~A)      # schedule must be a possible off-block time
+        H = (q >= 0.9) & (xS > -600) & (xS <= 14400) & ok
+        w = np.where(q >= 0.99, 1.0, np.where(q >= 0.95, 0.9, 0.8))
+        out = np.where(H, w * xS + (1 - w) * out, out)
     if stats is not None:
-        stats.update(G=int(G.sum()))
+        stats.update(G=int(G.sum()), H=int(H.sum()))
         stats.update(matched_changed=int((m & (np.abs(out - p) > 1)).sum()), stale=int(stale.sum()),
                      on_infeasible=int((m & ~feas & (P1 > 0.01)).sum()), linked=int(L.sum()), A=int(A.sum()), B=int(B.sum()), C=int(C.sum()), E=int(E.sum()))
     return out
