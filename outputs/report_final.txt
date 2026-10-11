@@ -1,18 +1,14 @@
 courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
-Mean of three runs of stage2.py --stages 3 --lr 0.05 with the per-airport gate correction, trained on all of 2025:
-  seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seed 23 (--rounds 2550,300,575); rows predicted above 4 h from the seed-7 run.
-The two-run version of this recipe on the January+July set is v5 (leaderboard 262.61; validation, Jan+Jul 2025, all rows: 297.9); the three-run version is v6.
-On the 344,841 rows shared with v6 the two files agree to an RMS difference of 31.1 s (correlation 0.9988).
 
-fin7: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
-  pass 1 done (591s)
-  pass 2 done (1172s)
-  gate correction by airport (logits): {'EDDF': 0.17, 'EDDM': 0.04, 'EGLL': 0.2, 'EHAM': 0.24, 'LEBL': 0.0, 'LEMD': 0.0, 'LFPG': 0.31, 'LIRF': 0.1, 'LSZH': 0.08, 'LTFM': 0.7}
-  gate done, rounds 345 (1312s)
-wrote out/fin_seed7.parquet: 670790 rows, mean 1022.3, max 102217.8, rows predicted above 1 h: 1490, expected near-schedule-push rows 1635, day-shift 5.4 (3299s)
-fin11: 3-stage, tail True, pass cap 3600.0, tail cap 14400.0, lr 0.05, leaves 127
-  pass 1 done (630s)
-  pass 2 done (1179s)
-  gate correction by airport (logits): {'EDDF': 0.16, 'EDDM': 0.04, 'EGLL': 0.21, 'EHAM': 0.22, 'LEBL': 0.0, 'LEMD': 0.0, 'LFPG': 0.35, 'LIRF': 0.09, 'LSZH': 0.09, 'LTFM': 0.7}
-  gate done, rounds 345 (1313s)
-wrote out/fin_seed11.parquet: 670790 rows, mean 1021.4, max 102264.0, rows predicted above 1 h: 1447, expected near-schedule-push rows 1589, day-shift 5.4 (3120s)
+Built by pipeline/build.py from
+  four runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
+    seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seed 23 and seed 31 (--rounds 2550,300,575);
+  and, for the January and July flights, the three runs on the leaderboard ranking set behind v6 (weight 3 to 4).
+Rules of pipeline/posthoc.py applied to every run before averaging (rows whose plain average is above 4 h come from the seed-7 run):
+  pairing window for matched departures; flight plans linked from the arrival record for unmatched ones (778 late flights:
+  679 ordinary, 28 near-schedule, 71 with a partly updated plan); Rome summer-time records (8 flights);
+  Rome flight numbers that are always schedule-default (1,100 flights).
+Against the first final file (three runs, no rules): RMS change 46.7 s; 5,533 predictions move by more than a minute, 260 by more than ten.
+
+Validation of the rules on unchanged models (seed-7 run, 2025): Jan+Jul 244.59 -> 240.35 without the two Paris records
+(299.19 -> 295.73 with them); Feb+Aug 241.53 -> 239.59; six Istanbul snow days 265.16 -> 262.88.

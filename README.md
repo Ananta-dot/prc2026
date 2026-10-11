@@ -77,9 +77,24 @@ python3 upload.py put ../outputs/courageous-onion_final.parquet
 ```
 
 `--rounds` (regressor, gate, push-delay model) skips the validation pass and uses the
-round counts found on the held-out months. A third run uses `--name fin_seed23 --seed 23
---rounds 2550,300,575`. The final file is the mean of the three runs, with rows predicted
-above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
+round counts found on the held-out months. Further runs use `--seed 23`, `31`, ... with
+`--rounds 2550,300,575`. The final file is then built like the leaderboard files:
+
+```
+python3 link.py ../data/processed/compact_final.parquet ../data/processed/link_final.parquet
+python3 tzcand.py ../data/processed/compact_final.parquet ../data/processed/tz_final.parquet
+python3 dfl_rate.py ../data/processed/compact_final.parquet ../data/processed/dfl_final.parquet
+python3 build.py --compact ../data/processed/compact_final.parquet --link ../data/processed/link_final.parquet \
+    --tz ../data/processed/tz_final.parquet --dflt ../data/processed/dfl_final.parquet \
+    --template ../data/raw/final_submitting.parquet --out ../outputs/courageous-onion_final.parquet \
+    --parts ../outputs/parts_fin7.npz,../outputs/parts_fin11.npz,../outputs/parts_fin23.npz,../outputs/parts_fin31.npz \
+    --extra ../outputs/lb_rules.parquet:3
+python3 upload.py put ../outputs/courageous-onion_final.parquet --replace
+```
+
+`lb_rules.parquet` is the rule-corrected mean of the three leaderboard-set runs (the same
+`build.py` call as for v10 without `--extra`); it covers the January and July flights, which
+are in both ranking sets. See `outputs/report_final.txt`.
 
 ## Layout
 
@@ -210,9 +225,17 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v4 | mean of two `stage2.py --stages 3` runs (seed 7 / lr 0.08 and seed 11 / lr 0.05), refined rules for flights more than 8 h late | 203.0 | 299.8 | 262.69 |
 | v5 | mean of two `stage2.py --stages 3 --lr 0.05` runs (seed 7 with the per-airport gate correction, seed 11 without) | 203.4 | 297.9 | 262.61 |
 | v6 | as v5 with a third run (seed 23) | - | - | 261.73 |
+| v7 | v6 with the pairing rules of `posthoc.py` (window for matched departures, linked flight plans for unmatched ones) | 206.5 | 296.1 | (see below) |
+| v8 | v7 averaged with the three final-phase runs on the same flights | - | - | |
+| v9 | v8 with the Rome summer-time rule | 206.5 | 295.9 | |
+| v10 | v9 with the Rome always-schedule rule | 206.3 | 295.7 | |
+
+The validation figures for v7, v9 and v10 are the seed-7 run of v5 (299.2 on all rows) with the
+rules applied, since the rules need no retraining.
 
 Two of the held-out rows (the Paris records above) account for 173 of the 304 in quadrature; without
-them the all-rows figure is 250.83 for v3, 245.3 for v4 and 243.0 for v5. The first two versions were built on the wrong
+them the all-rows figure is 250.83 for v3, 245.3 for v4, 243.0 for v5 and, for the seed-7 run,
+244.6 before the rules and 240.4 after all of them. The first two versions were built on the wrong
 assumption that extreme rows were not scored.
 
 v3 was written by the run reported in `outputs/report_v3.txt`; the rules for unmatched
