@@ -16,7 +16,7 @@ import numpy as np
 PAD = 3606.0
 
 
-def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None):
+def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None, tz_summer=None):
     p, r, P1, P2 = (np.asarray(v, "float64").copy() for v in (p, r, P1, P2))
     xS = T - S
     xL = T - LOBT
@@ -51,7 +51,13 @@ def apply(p, r, P1, P2, T, S, LOBT, AOBT, lk_LOBT, is_lirf, stats=None):
     # not late, plan current and no room below the window: the off-block time is more than an hour before the plan's
     E = ~m & np.isfinite(xLl) & (xS <= 3600) & (xLl > -900) & (xLl - PAD < 240)
     out = np.where(E, np.maximum(out, xLl + 4000), out)
+    # Rome, summer time: off-block times entered in UTC and stored as local time are two hours early, which always
+    # breaks the pairing.  A flight number that is normally paired, not late and yet unpaired is such a record in
+    # 18 of 25 cases in 2025 (taxi time = ordinary taxi time + 7200 s) and longer still in 3 more.
+    G = np.zeros(len(out), bool) if tz_summer is None else (np.asarray(tz_summer, bool) & ~m & (xS <= 3600) & (xS >= -1800))
+    out = np.where(G, np.maximum(out, 7900.0), out)
     if stats is not None:
+        stats.update(G=int(G.sum()))
         stats.update(matched_changed=int((m & (np.abs(out - p) > 1)).sum()), stale=int(stale.sum()),
                      on_infeasible=int((m & ~feas & (P1 > 0.01)).sum()), linked=int(L.sum()), A=int(A.sum()), B=int(B.sum()), C=int(C.sum()), E=int(E.sum()))
     return out

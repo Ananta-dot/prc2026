@@ -37,10 +37,16 @@ From v7 on, the submitted file is a blend of several `stage2.py` runs with the p
 
 ```
 python3 link.py ../data/processed/compact.parquet ../data/processed/link.parquet
+python3 tzcand.py ../data/processed/compact.parquet ../data/processed/tz.parquet
 python3 build.py --compact ../data/processed/compact.parquet --link ../data/processed/link.parquet \
-    --template ../data/raw/submitting.parquet --out ../outputs/courageous-onion_v7.parquet \
-    --parts ../outputs/parts_a.npz,../outputs/parts_b.npz,../outputs/parts_c.npz
+    --tz ../data/processed/tz.parquet \
+    --template ../data/raw/submitting.parquet --out ../outputs/courageous-onion_v9.parquet \
+    --parts ../outputs/parts_a.npz,../outputs/parts_b.npz,../outputs/parts_c.npz \
+    --extra ../outputs/final_rules.parquet:3
 ```
+
+`--extra file:weight` averages in another prediction file for the rows it shares (here the
+final-phase runs, which cover the same January and July flights).
 
 Each `stage2.py` run saves `parts_<tag>.npz` (regressor, class probabilities, prediction) next
 to its submission file; `build.py` applies the rules to every run and averages them.
@@ -86,6 +92,7 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
 | `pipeline/stage2.py` | the model: out-of-fold light passes, surface-state features from the estimated off-block times, a gate for late flights whose off-block time is near the schedule, rules for the rarest record types, final regressor |
 | `pipeline/link.py` | flight plans of departures without NM columns, recovered from the arrival record at the destination |
 | `pipeline/posthoc.py` | the pairing rules: taxi time inside (or outside) one hour of take-off minus the plan's off-block time |
+| `pipeline/tzcand.py` | Rome departures whose off-block time is likely shifted by the UTC offset |
 | `pipeline/build.py` | blend runs of `stage2.py` and enforce the rules; writes the submission file |
 | `pipeline/upload.py` | list / download / upload against the OpenSky object store |
 | `pipeline/leaderboard.py` | read the team's scores from the official leaderboard API |
@@ -137,9 +144,17 @@ above 4 h taken from the seed-7 run (`outputs/report_final.txt`).
     cases in 2025). If LOBT is within about an hour of take-off, an ordinary off-block time
     would have been paired, so the off-block time is the schedule (25 of 27 at Rome) or
     just over an hour before the plan (Istanbul).
+  - *Rome, off-block time two hours early.* Some Rome off-block times were entered in UTC
+    and stored as local time. In summer the shift is two hours, which always breaks the
+    pairing. So a Rome departure whose flight number is normally paired, which was not
+    late and yet has no NM columns, is such a record: of 25 in summer 2025, 18 have a
+    "taxi time" of an ordinary taxi time plus 7200 s and 4 more are longer still. The
+    regressor had learned an average of about 5,000 s for this group; `posthoc.py` raises
+    the summer ones to 7,900 s. (In winter the shift is one hour and the regressor's value
+    is already about right.) Other airports show nothing of the kind.
   On held-out months these rules alone, applied to unchanged models, lower the RMSE from
-  244.59 to 240.85 (January+July 2025, without the two Paris records below), from 241.53
-  to 240.37 (February+August) and from 265.16 to 262.88 (six Istanbul snow days).
+  244.59 to 240.60 (January+July 2025, without the two Paris records below), from 241.53
+  to 239.89 (February+August) and from 265.16 to 262.88 (six Istanbul snow days).
 - A handful of records match nothing (for example two Paris departures in January 2025
   with "taxi times" of 16 h and 23 h and nothing unusual in any other field). They are
   not predicted.
@@ -157,6 +172,8 @@ Each was checked on two held-out month pairs (January+July and February+August 2
 - pairing-window features and airline-level shares of unmatched late flights as inputs to
   the gate (the rules above already take what there is; the gate did not improve);
 - a small separate model for departures with an old flight plan (worse than the rule);
+- a second-stage gate that sees the first gate's probabilities for other late flights at
+  the airport around the same time;
 - the first-seen time of the aircraft in OpenSky's public flights API as a proxy for the
   off-block time: at Heathrow, Schiphol and Rome it is the take-off moment (median gap
   -34 s, +15 s, -19 s); at Zurich it is on the ground but adding it made a held-out day
