@@ -6,6 +6,7 @@
   python3 upload.py list                      # what is in the team bucket
   python3 upload.py put ../outputs/courageous-onion_v1.parquet
   python3 upload.py list prc-2026-datasets    # the shared data bucket
+  python3 upload.py buckets                   # every bucket these keys can see
   python3 upload.py get prc-2026-datasets final_ranking.parquet ../data/raw/final_ranking.parquet
 """
 import json, os, sys
@@ -46,6 +47,12 @@ elif cmd == "pull":
             continue
         s3.fget_object(DATA_BUCKET, o.object_name, target)
         print("fetched", o.object_name, f"{o.size:,}")
+elif cmd == "buckets":
+    try:
+        for b in s3.list_buckets():
+            print(b.creation_date, b.name)
+    except Exception as e:
+        sys.exit(f"listing buckets is not allowed for these keys: {e}")
 elif cmd == "get":
     s3.fget_object(sys.argv[2], sys.argv[3], sys.argv[4])
     print("saved", sys.argv[4])
