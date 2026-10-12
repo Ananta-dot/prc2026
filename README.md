@@ -247,7 +247,34 @@ near-schedule class. Feb+Aug 2025: 228.57 -> 227.62; leaderboard v12 -> v14: 255
 
 Airport weather observations (METAR) from the Iowa Environmental Mesonet ASOS archive,
 https://mesonet.agron.iastate.edu/request/download.phtml, fetched by `pipeline/get_weather.py`.
-No other external data is used.
+
+From v15 on: OpenSky Network ground positions (ADS-B state vectors on the ground, historical
+database via Trino, https://opensky-network.org/data/trino), fetched by `pipeline/ground_fetch.py`
+(needs an OpenSky account with access to the historical database; one login per run).
+
+## OpenSky ground tracks (v15 on)
+
+`ground_fetch.py` downloads, for each airport and UTC day, the ground positions inside a box around
+the airport, one point per 10 s per aircraft (about 5 s per airport-day). Ground coverage near the
+stands exists at Zurich, Amsterdam, Heathrow, Munich and Barcelona; at Madrid, Istanbul and Rome
+there is almost none, and at Paris CDG and Frankfurt it covers few departures, so only the first
+five are fetched. `ground.py` matches each departure to its track on the callsign and the take-off
+time and searches back from the take-off for the stand (the last stop of 20 min or more within 50 m,
+or a gap of 15 min or more: transponder off). Only at Zurich does the first movement give the
+off-block time itself (56% within 60 s); elsewhere the aircraft are first seen partway along the
+taxi, but the observed part still carries the queue the model cannot see. Seven features
+(`g_*`, see `ground.py`) are appended to the feature file by `ground_feats.py`:
+
+```
+python3 ground_fetch.py 2026-01-01:2026-03-01,2026-06-01:2026-08-01,2025-01-01:2026-01-01 LSZH EHAM EGLL EDDM LEBL
+python3 ground_feats.py ../data/processed/compact.parquet ../data/processed/feat.parquet ../data/processed/feat_g.parquet
+python3 ground_feats.py ../data/processed/compact_final.parquet ../data/processed/feat_final.parquet ../data/processed/feat_final_g.parquet
+OUT=../outputs/prod_g G=_g ./run_prod.sh lb && OUT=../outputs/prod_g G=_g ./run_prod.sh final
+```
+
+Validation (seed 7, rules applied, without the two Paris records): Jan+Jul 2025 239.34 -> 235.19,
+Feb+Aug 2025 228.57 -> 223.88. Rows up to 1 h at Zurich 161 -> 115 (Jan+Jul) and 150 -> 102
+(Feb+Aug), Amsterdam 159 -> 137 and 147 -> 133, Barcelona 209 -> 199 and 197 -> 184.
 
 ## Results
 

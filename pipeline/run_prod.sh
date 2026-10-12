@@ -5,14 +5,14 @@
 set -e
 PY=../.venv/bin/python
 P=../data/processed
-O=../outputs/prod
+O=${OUT:-../outputs/prod}
 mkdir -p $O
 if [[ $1 == lb ]]; then
-  FEAT=$P/feat.parquet; COMP=$P/compact.parquet; TPL=../data/raw/submitting.parquet; SUF=lb
-  RUNS=("7 3126,300,346" "11 2077,300,218" "23 2550,300,575")
-else
-  FEAT=$P/feat_final.parquet; COMP=$P/compact_final.parquet; TPL=../data/raw/final_submitting.parquet; SUF=fin
+  FEAT=$P/feat${G:-}.parquet; COMP=$P/compact.parquet; TPL=../data/raw/submitting.parquet; SUF=lb
   RUNS=("7 3126,300,346" "11 2077,300,218" "23 2550,300,575" "31 2550,300,575" "47 2550,300,575")
+else
+  FEAT=$P/feat_final${G:-}.parquet; COMP=$P/compact_final.parquet; TPL=../data/raw/final_submitting.parquet; SUF=fin
+  RUNS=("7 3126,300,346" "11 2077,300,218" "23 2550,300,575" "31 2550,300,575" "47 2550,300,575" "59 2550,300,575" "71 2550,300,575")
 fi
 parts=()
 for r in "${RUNS[@]}"; do
