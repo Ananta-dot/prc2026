@@ -21,3 +21,9 @@ __pycache__/
 .venv/
 opensky_api.json
 data/external/opensky/
+
+# experiment and production intermediates (matrices, model parts)
+outputs/exp/
+outputs/prod/
+*.npy
+data/raw/_parts*/

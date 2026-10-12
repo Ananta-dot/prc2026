@@ -46,6 +46,7 @@ ap.add_argument("--val-range", default="", help="hold out these UTC days instead
 ap.add_argument("--cal-cap", type=float, default=0.7, help="largest per-airport upward correction of the gate, in logits (0 = off)")
 ap.add_argument("--gate-rounds", type=int, default=300)
 ap.add_argument("--dump-zone", default="", help="save the gate-zone rows of the matrix to this prefix and stop")
+ap.add_argument("--dump-all", default="", help="save the whole matrix after the light passes to this prefix (final fit: <prefix>_fin), then continue")
 ap.add_argument("--on-min", type=float, default=3600.0, help="near-schedule class needs a taxi time above this")
 ap.add_argument("--on-thr", type=float, default=2700.0, help="near-schedule class: off-block at most this long after schedule")
 a = ap.parse_args()
@@ -251,6 +252,13 @@ def run(fold, final, pred_rows, rounds=None, va=None):
             X[:, col[n]] = v
         trim()
         print(f"  pass {stage} done ({time.time()-t0:.0f}s)", flush=True)
+    if a.dump_all:    # the whole matrix after the passes, for fast experiments on the last stage and for nn.py
+        dp = a.dump_all + ("_fin" if final else "")
+        np.save(dp + "_X.npy", X)
+        pd.DataFrame({"id": ids, "y": y, "cls": cls, "xS": xS, "fmiss": fmiss, "apt": apt, "month": month, "fold": fold,
+                      "T": T, "push": push, "lab": lab, "rank": rank, "xA": xA}).to_parquet(dp + "_meta.parquet")
+        open(dp + "_names.txt", "w").write("\n".join(names))
+        print(f"  dumped matrix {X.shape} ({time.time()-t0:.0f}s)", flush=True)
     if a.mm:
         X = park(X)
     Xp = np.array(X[pred_rows])

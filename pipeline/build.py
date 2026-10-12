@@ -10,12 +10,15 @@ the runs are averaged, and rows whose plain average is above 4 h come from the f
 import argparse, sys, os
 import numpy as np, pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import posthoc
+import posthoc, calib
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--compact", required=True); ap.add_argument("--link", required=True); ap.add_argument("--template", required=True)
 ap.add_argument("--parts", required=True); ap.add_argument("--out", required=True); ap.add_argument("--extra", default="")
 ap.add_argument("--no-rules", action="store_true")
+ap.add_argument("--nn", default="", help="file:weight from nn.py --final: blended into each run's regressor before the rules")
+ap.add_argument("--gate-shift", type=float, default=0.0, help="logits added to the gate's near-schedule probability")
+ap.add_argument("--no-adjust", action="store_true", help="leave out calib.adjust (the v12 behaviour)")
 ap.add_argument("--tz", default="", help="candidates from tzcand.py (Rome records shifted by the UTC offset)")
 ap.add_argument("--dflt", default="", help="rates from dfl_rate.py (Rome flight numbers that are always schedule-default)")
 a = ap.parse_args()
@@ -23,15 +26,25 @@ t = pd.read_parquet(a.template)
 c = pd.read_parquet(a.compact, columns=["MVT_ID_mvt", "APT", "t_MVT_TIME_UTC_mvt", "t_SCHED_TIME_UTC_mvt", "t_LOBT_flt", "t_AOBT_3_flt", "is_rank", "is_dep"])
 c = c[c.is_rank & c.is_dep].drop_duplicates("MVT_ID_mvt").set_index("MVT_ID_mvt").reindex(t.MVT_ID_mvt.to_numpy())
 lk = pd.read_parquet(a.link).set_index("MVT_ID_mvt").lk_LOBT.reindex(c.index).to_numpy()
+apt = c.APT.astype(str).to_numpy()
 T, S, LOBT, AOBT, lirf = c.t_MVT_TIME_UTC_mvt.to_numpy(), c.t_SCHED_TIME_UTC_mvt.to_numpy(), c.t_LOBT_flt.to_numpy(), c.t_AOBT_3_flt.to_numpy(), (c.APT == "LIRF").to_numpy()
 tzs = None
 if a.tz:
     tz = pd.read_parquet(a.tz); tzs = pd.Series(True, index=tz.MVT_ID_mvt[tz.off == 7200]).reindex(c.index).fillna(False).to_numpy(bool)
 dq = pd.read_parquet(a.dflt).set_index("MVT_ID_mvt").q.reindex(c.index).to_numpy() if a.dflt else None
+nnp, nnw = None, 0.0
+if a.nn:
+    path, nnw = a.nn.rsplit(":", 1); nnw = float(nnw)
+    zn = np.load(path); nnp = pd.Series(zn["nn"], index=zn["id"]).reindex(c.index).to_numpy()
+    assert np.isfinite(nnp).all(), "NN file does not cover every row"
 raw, new = [], []
 for f in a.parts.split(","):
     z = np.load(f); o = pd.Series(np.arange(len(z["id"])), index=z["id"]).reindex(c.index).to_numpy()
     p, r, P = z["p"][o], z["r"][o], z["P"][o]
+    if nnp is not None:     # same blend as postval.py: the regressor part of the prediction moves, the rest does not
+        rb = (1 - nnw) * r + nnw * nnp; p = p + P[:, 0] * (rb - r); r = rb
+    if not a.no_adjust:     # gate shift and no day-shift on same-day take-offs (calib.py; checked on Jan+Jul and Feb+Aug 2025)
+        p, P = calib.adjust(p, r, P, T - S, S, T, apt, a.gate_shift)
     st = {}
     raw.append(p); new.append(p if a.no_rules else posthoc.apply(p, r, P[:, 1], P[:, 2], T, S, LOBT, AOBT, lk, lirf, st, tzs, dq))
     print(f"{os.path.basename(f)}: {st}")

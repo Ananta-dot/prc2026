@@ -96,6 +96,17 @@ python3 upload.py put ../outputs/courageous-onion_final.parquet --replace
 `build.py` call as for v10 without `--extra`); it covers the January and July flights, which
 are in both ranking sets. See `outputs/report_final.txt`.
 
+From v11 on (`pipeline/run_prod.sh lb|final` does all of it): each `stage2.py` run takes
+`--dump-all ../outputs/prod/mat_<set>` for the first seed, three `nn.py --final` runs (seeds 7,
+23, 31) train on that matrix, and `build.py` takes `--nn <mean of the three>.npz:0.35`. On a
+machine where SciPy no longer loads (macOS 27 with the Python 3.10 wheels), use a fresh
+environment: `uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python numpy
+pandas==2.3.3 pyarrow lightgbm==4.7.0 scipy torch minio`. A validation run takes about 8 minutes
+on an M4 Max (14 cores), an MLP about 90 s on its GPU.
+
+The final file now holds seven runs on the final ranking set (seeds 7, 11, 23, 31, 47, 59, 71)
+with the MLP blend, and the five leaderboard-set runs of v12 (weight 5) for January and July.
+
 ## Layout
 
 | Path | What it is |
@@ -110,7 +121,10 @@ are in both ranking sets. See `outputs/report_final.txt`.
 | `pipeline/posthoc.py` | the pairing rules: taxi time inside (or outside) one hour of take-off minus the plan's off-block time |
 | `pipeline/tzcand.py` | Rome departures whose off-block time is likely shifted by the UTC offset |
 | `pipeline/dfl_rate.py` | Rome flight numbers and airlines whose off-block time is (nearly) always the schedule |
-| `pipeline/build.py` | blend runs of `stage2.py` and enforce the rules; writes the submission file |
+| `pipeline/build.py` | blend runs of `stage2.py` (and, with `--nn`, the MLP) and enforce the rules; writes the submission file |
+| `pipeline/nn.py` | MLP on the matrix saved by `stage2.py --dump-all`, trained on the GPU (Apple MPS or CUDA); blended into the regressor |
+| `pipeline/exp.py`, `pipeline/postval.py` | experiments on the saved matrix; validation scores with the rules applied |
+| `pipeline/run_prod.sh` | the production runs behind v11 and the final file |
 | `pipeline/upload.py` | list / download / upload against the OpenSky object store |
 | `pipeline/leaderboard.py` | read the team's scores from the official leaderboard API |
 | `outputs/report_v*.txt` | validation report for each submitted version |
@@ -206,7 +220,28 @@ Each was checked on two held-out month pairs (January+July and February+August 2
   off-block time: at Heathrow, Schiphol and Rome it is the take-off moment (median gap
   -34 s, +15 s, -19 s); at Zurich it is on the ground but adding it made a held-out day
   worse (RMSE 191 against 157). `pipeline/opensky_probe.py` is the probe; no OpenSky data
-  is used in any submission.
+  is used in any submission;
+- a gate for schedule-default off-block times on flights less than an hour late (Rome:
+  27% of flights 10 to 30 minutes late), with a regressor fit without them: under 1 s;
+- a recalibration of the gate (shift and temperature in logits): about 1 s, within noise;
+- the share of arrivals around the schedule whose in-block time equals their schedule, as a
+  sign of a system-wide default (Rome: 17.8% against 23.0% across its deciles);
+- the rate at which a flight number is paired with an NM flight when on time (almost every
+  flight number is paired, so it does not separate the late unmatched classes);
+- 255 or 511 leaves for the final regressor;
+- a larger gate for flights 4 to 8 h late: on Jan+Jul 2025 the gate is far too low there
+  (predicted 0.23, actual 0.77) and +2 logits gives 238.5 -> 234.7, but on Feb+Aug the same
+  shift costs 2.7 (228.6 -> 231.2): the January/July shortfall came from a few event days;
+- a global +0.25 logit shift of the gate: better on three 2025 validation runs (-0.4 to -0.9)
+  but worse on the leaderboard (v13 against v14, about +1.1).
+
+## Same-day rule (`pipeline/calib.py`)
+
+An off-block time "with the schedule's date" is a day early only when the take-off is on a later
+local day than the schedule: 12 of 12 Rome records of that kind in 2025. For a take-off on the
+schedule's local day the day-shift class is impossible, and its probability goes to the
+near-schedule class. Feb+Aug 2025: 228.57 -> 227.62; leaderboard v12 -> v14: 255.85 -> 254.86
+(one row, predicted 66,751 s, now 53,619 s). `build.py` applies it (and `--gate-shift`, 0 by default).
 
 ## External data
 
@@ -229,10 +264,16 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v7 | v6 with the pairing rules of `posthoc.py` (window for matched departures, linked flight plans for unmatched ones) | 206.5 | 296.1 | (see below) |
 | v8 | v7 averaged with the three final-phase runs on the same flights | - | - | |
 | v9 | v8 with the Rome summer-time rule | 206.5 | 295.9 | |
-| v10 | v9 with the Rome always-schedule rule | 206.3 | 295.7 | |
+| v10 | v9 with the Rome always-schedule rule | 206.3 | 295.7 | 257.51 |
+| v11 | three fresh `stage2.py` runs (seeds 7, 11, 23) with the regressor blended 65/35 with three `nn.py` MLPs, rules, final-phase runs blended in | 202.7 | 294.1 | 256.20 |
+| v12 | v11 with two more runs (seeds 31, 47) | - | - | 255.85 |
+| v13 | v12 with the gate shifted up by 0.25 logits and the same-day rule (`calib.py`) | - | - | 255.94 |
+| v14 | v12 with the same-day rule only (one row changes) | - | - | 254.86 |
 
 The validation figures for v7, v9 and v10 are the seed-7 run of v5 (299.2 on all rows) with the
-rules applied, since the rules need no retraining.
+rules applied, since the rules need no retraining. The v11 figures are the mean of the seed-7 and
+seed-11 validation runs with the MLP blend and the rules (`postval.py`); without the two Paris
+records: 239.34 (seed 7, rules), 238.43 (seeds 7 + 11), 238.32 (with the MLP).
 
 Two of the held-out rows (the Paris records above) account for 173 of the 304 in quadrature; without
 them the all-rows figure is 250.83 for v3, 245.3 for v4, 243.0 for v5 and, for the seed-7 run,

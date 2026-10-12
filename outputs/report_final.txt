@@ -1,15 +1,13 @@
-courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
+courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026). Uploaded 2026-10-12.
 
-Built by pipeline/build.py from
-  five runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
-    seed 7 (--rounds 2681,300,851), seed 11 (--rounds 2420,300,300), seeds 23, 31 and 47 (--rounds 2550,300,575);
-  and, for the January and July flights, the three runs on the leaderboard ranking set behind v6 (weight 3 to 5).
-Rules of pipeline/posthoc.py applied to every run before averaging (rows whose plain average is above 4 h come from the seed-7 run):
-  pairing window for matched departures; flight plans linked from the arrival record for unmatched ones (778 late flights:
-  679 ordinary, 28 near-schedule, 71 with a partly updated plan); Rome summer-time records (8 flights);
-  Rome flight numbers that are always schedule-default (about 1,070 flights).
-Against the first final file (three runs, no rules): RMS change about 47 s; about 5,500 predictions move by more than a minute, 260 by more than ten.
-No matched departure is predicted outside its pairing window any more (124 were in the first final file).
+Built by pipeline/build.py (see pipeline/run_prod.sh) from
+  seven runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
+    seed 7 (--rounds 3126,300,346), seed 11 (--rounds 2077,300,218), seeds 23, 31, 47, 59, 71 (--rounds 2550,300,575);
+  the regressor of each run blended 65/35 with the mean of three nn.py MLPs (seeds 7, 23, 31) trained on the seed-7 matrix;
+  calib.adjust: no day-shift class for take-offs on the schedule's local day (gate shift 0);
+  the rules of posthoc.py applied to every run before averaging;
+  for the January and July flights, the five leaderboard-set runs (seeds 7, 11, 23, 31, 47, same recipe) with weight 5 to 7.
 
-Validation of the rules on unchanged models (seed-7 run, 2025): Jan+Jul 244.59 -> 240.34 without the two Paris records
-(299.19 -> 295.73 with them); Feb+Aug 241.53 -> 239.57; six Istanbul snow days 265.16 -> 262.88.
+Leaderboard (January and July 2026), same recipe on the leaderboard set: v12 255.85 (five runs + MLP), v14 254.86 (+ same-day rule).
+Validation, Jan+Jul 2025 without the two Paris records, rules applied: seed 7 239.34; seeds 7+11 238.43; with the MLP 238.32.
+Same-day rule on Feb+Aug 2025: 228.57 -> 227.62.
