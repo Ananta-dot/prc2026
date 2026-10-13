@@ -25,5 +25,6 @@ data/external/opensky/
 # experiment and production intermediates (matrices, model parts)
 outputs/exp/
 outputs/prod/
+outputs/prod_g/
 *.npy
 data/raw/_parts*/
