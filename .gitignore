@@ -26,5 +26,6 @@ data/external/opensky/
 outputs/exp/
 outputs/prod/
 outputs/prod_g/
+outputs/prod_g2/
 *.npy
 data/raw/_parts*/
