@@ -19,7 +19,7 @@ for r in "${RUNS[@]}"; do
   s=${r%% *}; rd=${r##* }
   dump=(); [[ $s == 7 ]] && dump=(--dump-all $O/mat_${SUF})
   $PY stage2.py --feat $FEAT --compact $COMP --template $TPL --out $O --name run_${SUF}$s --tag ${SUF}$s \
-      --stages 3 --seed $s --lr 0.05 --rounds $rd "${dump[@]}" 2>&1 | grep -vE "Warning"
+      --stages 3 --seed $s --lr ${LR:-0.05} --rounds ${RR:-$rd} "${dump[@]}" 2>&1 | grep -vE "Warning"
   parts+=($O/parts_${SUF}$s.npz)
 done
 for s in 7 23 31; do

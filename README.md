@@ -297,6 +297,7 @@ Validation: January and July 2025 held out (344,419 departures), the rest of 202
 | v13 | v12 with the gate shifted up by 0.25 logits and the same-day rule (`calib.py`) | - | - | 255.94 |
 | v14 | v12 with the same-day rule only (one row changes) | - | - | 254.86 |
 | v15/v16 | five runs with the OpenSky ground-track features (`feat_g`), MLP, same-day rule, final-phase runs blended in (v15 was over the daily limit; v16 is the same file) | 204.3 | 291.5 | 251.22 |
+| v17 | ground features extended (own taxi: path, stopped time, stops, time from last stop; surface state: aircraft taxiing / holding 10 and 20-30 min before take-off), lr 0.03 (5,500 rounds), MLP at 0.3, five runs, no final-phase blend | 202.0 | 290.6 | 250.70 |
 
 The validation figures for v7, v9 and v10 are the seed-7 run of v5 (299.2 on all rows) with the
 rules applied, since the rules need no retraining. The v11 figures are the mean of the seed-7 and
