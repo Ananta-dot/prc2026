@@ -1,13 +1,12 @@
-courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026). Uploaded 2026-10-12.
+courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
+Uploaded 2026-10-13, frozen. sha256 8d62faa292a2a860002a55850eecf987d3c13db552571ada846d96e6d13bebe1
 
-Built by pipeline/build.py (see pipeline/run_prod.sh) from
-  seven runs of stage2.py --stages 3 --lr 0.05 on the final ranking set, trained on all of 2025:
-    seed 7 (--rounds 3126,300,346), seed 11 (--rounds 2077,300,218), seeds 23, 31, 47, 59, 71 (--rounds 2550,300,575);
-  the regressor of each run blended 65/35 with the mean of three nn.py MLPs (seeds 7, 23, 31) trained on the seed-7 matrix;
-  calib.adjust: no day-shift class for take-offs on the schedule's local day (gate shift 0);
-  the rules of posthoc.py applied to every run before averaging;
-  for the January and July flights, the five leaderboard-set runs (seeds 7, 11, 23, 31, 47, same recipe) with weight 5 to 7.
+Built by pipeline/build.py (README, "Replicate") from
+  seven runs of stage2.py --stages 3 --lr 0.03 --rounds 5500,300,267 on the final ranking set (seeds 7, 11, 23, 31, 47, 59, 71),
+  features feat_final_g2.parquet (features.py + OpenSky ground-track features of ground_feats.py at LSZH, EHAM, EGLL, EDDM, LEBL);
+  the regressor of each run blended 70/30 with the mean of three nn.py MLPs (seeds 7, 23, 31);
+  the rules of posthoc.py and calib.py (same-day rule; gate shift 0) applied to every run before averaging;
+  for the January and July flights, the five leaderboard-set runs of the same recipe (rules applied) with weight 5 to 7.
 
-Leaderboard (January and July 2026), same recipe on the leaderboard set: v12 255.85 (five runs + MLP), v14 254.86 (+ same-day rule).
-Validation, Jan+Jul 2025 without the two Paris records, rules applied: seed 7 239.34; seeds 7+11 238.43; with the MLP 238.32.
-Same-day rule on Feb+Aug 2025: 228.57 -> 227.62.
+Leaderboard (January and July 2026), same recipe on the leaderboard set: v17 250.70 (five runs), v18 250.60 (+ the final-set runs).
+Validation (seed 7, rules applied, without the two Paris records): Jan+Jul 2025 233.33, Feb+Aug 2025 223.0.

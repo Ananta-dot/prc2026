@@ -27,5 +27,6 @@ outputs/exp/
 outputs/prod/
 outputs/prod_g/
 outputs/prod_g2/
+outputs/archive/
 *.npy
 data/raw/_parts*/
