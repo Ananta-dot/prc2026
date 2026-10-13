@@ -2,7 +2,7 @@
 
 Team **courageous-onion**, EUROCONTROL [PRC Data Challenge 2026](https://prc-data-challenge-2026.netlify.app/):
 predict the taxi-out time (seconds) of departures at ten European airports in 2026, trained on 2025.
-Scored by RMSE over every departure. Leaderboard (January and July 2026): **250.60**.
+Scored by RMSE over every departure. Leaderboard (January and July 2026): **250.48**.
 
 Licence: GPL-3.0-or-later (see `LICENSE`).
 
@@ -26,7 +26,7 @@ Licence: GPL-3.0-or-later (see `LICENSE`).
   (matched flights) or excludes a range (unmatched ones, plan recovered from the arrival record, `link.py`);
   Rome records whose off-block time is the schedule, shifted by the UTC offset, or carries the schedule's
   date (impossible for a take-off on the schedule's local day).
-- **Ensemble** (`build.py`): rules applied to each of 5 (leaderboard) or 7 (final) seeds, then averaged;
+- **Ensemble** (`build.py`): rules applied to each of 10 (leaderboard) or 12 (final) seeds, then averaged;
   January and July flights averaged across both ranking sets.
 
 Validation: January+July 2025 held out (February+August as a second check), the rest of 2025 for training.
@@ -59,7 +59,7 @@ for s in "" _final; do
   $PY dfl_rate.py $P/compact$s.parquet $P/dfl$s.parquet
 done
 
-# models: 5 + 7 LightGBM runs and the MLPs (about 4 h on a 14-core Mac)
+# models: 10 + 12 LightGBM runs and the MLPs (about 6 h on a 14-core Mac)
 export OUT=../outputs/prod_g2 G=_g2 LR=0.03 RR=5500,300,267
 ./run_prod.sh lb && ./run_prod.sh final
 
@@ -69,12 +69,12 @@ $PY build.py --compact $P/compact.parquet --link $P/link.parquet --tz $P/tz.parq
     --template ../data/raw/submitting.parquet --parts $LB --nn $O/nn_lb_avg.npz:0.3 --out $O/lb_rules.parquet
 $PY build.py --compact $P/compact_final.parquet --link $P/link_final.parquet --tz $P/tz_final.parquet --dflt $P/dfl_final.parquet \
     --template ../data/raw/final_submitting.parquet --parts $FIN --nn $O/nn_fin_avg.npz:0.3 \
-    --extra $O/lb_rules.parquet:5 --out ../outputs/courageous-onion_final.parquet
+    --extra $O/lb_rules.parquet:10 --out ../outputs/courageous-onion_final.parquet
 $PY upload.py put ../outputs/courageous-onion_final.parquet --replace
 ```
 
 The leaderboard file: the second `build.py` command without `--extra` and with `--out $O/fin_rules.parquet`,
-then the first one with `--extra $O/fin_rules.parquet:7` and `--out ../outputs/courageous-onion_v18.parquet`.
+then the first one with `--extra $O/fin_rules.parquet:12` and `--out ../outputs/courageous-onion_v20.parquet`.
 To validate a change: `stage2.py ... --skip-final --val-months 1,7` (or `2,8`), then
 `postval.py --val ../outputs/exp/val_<tag>.npz`.
 

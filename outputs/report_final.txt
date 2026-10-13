@@ -1,12 +1,15 @@
 courageous-onion_final.parquet: predictions for final_submitting.parquet (670,790 departures, Jan/Feb/Jun/Jul 2026).
-Uploaded 2026-10-13, frozen. sha256 8d62faa292a2a860002a55850eecf987d3c13db552571ada846d96e6d13bebe1
+Uploaded 2026-10-13 (replaces the v18-recipe file of the same day), frozen. sha256 c74cc4a9eb82cf4f29a88691accecdd807a579a4c78f26e2d310dc71ee0788c6
 
 Built by pipeline/build.py (README, "Replicate") from
-  seven runs of stage2.py --stages 3 --lr 0.03 --rounds 5500,300,267 on the final ranking set (seeds 7, 11, 23, 31, 47, 59, 71),
+  twelve runs of stage2.py --stages 3 --lr 0.03 --rounds 5500,300,267 on the final ranking set
+  (seeds 7, 11, 23, 31, 47, 59, 71, 101, 103, 107, 109, 113),
   features feat_final_g2.parquet (features.py + OpenSky ground-track features of ground_feats.py at LSZH, EHAM, EGLL, EDDM, LEBL);
   the regressor of each run blended 70/30 with the mean of three nn.py MLPs (seeds 7, 23, 31);
   the rules of posthoc.py and calib.py (same-day rule; gate shift 0) applied to every run before averaging;
-  for the January and July flights, the five leaderboard-set runs of the same recipe (rules applied) with weight 5 to 7.
+  for the January and July flights, the ten leaderboard-set runs of the same recipe (rules applied) with weight 10 to 12.
 
-Leaderboard (January and July 2026), same recipe on the leaderboard set: v17 250.70 (five runs), v18 250.60 (+ the final-set runs).
+Leaderboard (January and July 2026), same recipe on the leaderboard set: v18 250.60 (5 runs + 7 final-set runs),
+v20 250.48 (10 runs + the same 7 final-set runs).
 Validation (seed 7, rules applied, without the two Paris records): Jan+Jul 2025 233.33, Feb+Aug 2025 223.0.
+Tried and not used: gate rounds 150/600/1000 (mixed across the two hold-outs), CatBoost/residual blend (v19 250.78).
