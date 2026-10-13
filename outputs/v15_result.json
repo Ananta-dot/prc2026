@@ -1,0 +1,7 @@
+{
+    "status": "Rejected",
+    "file": "courageous-onion_v15.parquet",
+    "bucket": "prc-2026-courageous-onion",
+    "error": "DAILY_LIMIT_REACHED: 5 of 5 used today, resets at 00:00 UTC",
+    "error_type": "DAILY_LIMIT_REACHED"
+}
